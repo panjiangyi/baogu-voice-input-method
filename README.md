@@ -40,20 +40,21 @@ fcitx5 -r
 #    streaming Paraformer + offline final Paraformer + 本地标点模型
 bash scripts/09-setup-sherpa.sh
 
-# 4. 可选 DeepSeek 后处理在 preedit 最终提交前运行
+# 3. 可选 DeepSeek 后处理在 preedit 最终提交前运行
 #    需要时在部署时选择 y，或设置 VOICEIME_LLM_ENABLED=1
 #    在项目根目录创建权限为 600 的 .env：
 #    DEEPSEEK_API_KEY='...'
 #    DEEPSEEK_BASE_URL='https://api.deepseek.com/anthropic'
 #    DEEPSEEK_MODEL='deepseek-v4-flash'
 
-# 5. 安装并启动用户级 systemd 服务
+# 4. 安装并启动用户级 systemd 服务
 bash scripts/10-install-service.sh
 
-# 6. 检查
+# 5. 检查
 ./voiceime-status
 journalctl --user -u voiceime-ptt -f
-journalctl --user -u voiceime-corrector -f
+journalctl --user -u voiceime-engine -f   # 默认 DeepSeek 路径的日志
+journalctl --user -u voiceime-corrector -f   # 仅 legacy FireRed + 本地纠错服务路径
 
 > `voiceime-engine` 直接调用 DeepSeek 的 Anthropic 兼容接口，明确关闭
 > thinking；不需要 OpenCode、cc-switch 或本地纠错服务。
@@ -66,9 +67,10 @@ journalctl --user -u voiceime-corrector -f
 - **按住右 Alt**：开始说话，实时识别结果显示为 Fcitx preedit，不反复修改应用正文。
 - **松开右 Alt**：结束本句。最多等待 1.2 秒的 offline Paraformer final；随后应用词库规范化和本地安全标点。如启用 DeepSeek，还会等待其纠错结果（默认最多 15 秒），最后只 commit 一次。超过 10 秒的长句、final 超时、上一条 final 仍在运行时会直接使用 streaming 结果，并仍可交给 DeepSeek 纠错。
 - legacy 模式（`VOICEIME_OUTPUT_MODE` 设为 `preedit` 以外的值）仍保留 FireRedASR2 + LLM 的旧重写路径，但默认关闭，需要显式设 `VOICEIME_LLM_ENABLED=1` 才会启用（`punctuation` 安全模式只接受标点/空格变化，实词变化会被拒绝并保留 ASR 原文；API 失败时仍会补一个句末句号）。
-- 屏幕提示：录音时在当前活动显示器下方居中显示动态声波；AI 后处理显示“纠错中”，结束后短暂显示“纠错完成”“纠错失败”或“纠错超时”。提示窗不会获取键盘焦点。
+- 屏幕提示：录音时在当前活动显示器下方居中显示动态声波；AI 后处理显示“纠错中”，结束后短暂显示“纠错完成”“纠错失败”“纠错超时”“纠错已开启”“纠错已关闭”。提示窗不会获取键盘焦点。
 - `Ctrl+Alt+V`：免手持开始/停止。
 - `Ctrl+Alt+B`：结束当前听写。
+- `Ctrl+Shift+F9`：切换 DeepSeek 自动纠错；屏幕短暂显示开启/关闭提示，状态写回 `~/.config/voiceime/deepseek-enabled.txt`，重启后保留。
 - `./voiceime-reset`：异常时强制清理引擎和录音进程。
 
 ### PR #6：preedit + bounded final 架构
@@ -253,6 +255,8 @@ bash scripts/06-app-compat.sh
 
 ## 日常使用：按住右 Alt 说话（PTT）
 
+> 当前用户看上面的「[使用](#使用)」一节即可。本节保留给需要理解 `voiceime-ptt` 守护进程实现（信号、麦克风解析、XTEST 过滤等）的读者。
+
 日常服务通过本项目的 Fcitx5 插件显示实时预编辑文本，句末纠错后一次性提交 Unicode。
 GTK 输入框通过 surrounding-text 接口修正文字；终端通过输入法接口接收退格。
 不再用 xdotool 逐个映射中文字，也不使用剪贴板。
@@ -282,6 +286,7 @@ systemctl --user enable --now voiceime-ptt   # 已配置，登录自动启动
 | **按住右 Alt** | 录音 + 边说边上屏；**松开**即停止并输出最后一段 |
 | Ctrl+Alt+V | 免手持切换：按一下开始，再按一下停止 |
 | Ctrl+Alt+B | 停止并上屏 |
+| Ctrl+Shift+F9 | 切换 DeepSeek 自动纠错（仅 `voiceime-ptt` 守护进程仍负责捕获） |
 
 ### 设计
 
@@ -354,11 +359,10 @@ systemctl --user enable --now voiceime-ptt   # 已配置，登录自动启动
 ## 已知问题
 
 1. **GNOME/mutter 程序化焦点不稳定**：自动化测试需 `windowactivate`+点击组合；真人场景由用户手动聚焦，不受影响。
-2. **xdotool 需 LD_LIBRARY_PATH 包装**（源码编译版）：已提供 `~/.local/bin/xdotool` 包装脚本。
-3. **Vosk small 模型中英混合识别差**（24-58% 重合率）；短/中句可用（80%+）。
-4. **声学回环（扬声器→mic）降质**：回环测试识别率低于真人语音，真人测试为准。
-5. **xdotool 仅 X11**：Wayland 需 ydotool（root 服务），POC 限定 X11。
-6. **fcitx5 兼容性待测**：fcitx 激活态下的直接输入需真人语音确认。
+2. **声学回环（扬声器→mic）降质**：回环测试识别率低于真人语音，真人测试为准。
+3. **X11 全局键盘监听**：PTT 与 `Ctrl+Shift+F9` 都通过 `xinput test-xi2 --root` 监听；Wayland 需 ydotool 等 root 服务，本项目目前限定 X11。
+
+历史 POC 阶段遗留的 Vosk small 模型识别差、xdotool 包装脚本、POC 兼容性等问题，已随链路切换到 Sherpa streaming + Fcitx5 native bridge 不再适用；详细数据保留在 `POC-REPORT.md`。
 
 完整结论见 `POC-REPORT.md`（结论 B：POC 部分通过，先完成真人语音验证再二开）。
 
