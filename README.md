@@ -120,8 +120,14 @@ offline Paraformer large（最多等 1.2 秒）
 ./voiceime-hotwords remove "MyProject"
 ```
 
-个人词保存在 `~/.config/voiceime/hotwords.txt`。修改后命令会重启 VoiceIME，
-新词立即参与英文规范化。
+个人词保存在 `~/.config/voiceime/hotwords.txt`，UTF-8 TXT，一行一个词。
+可以直接编辑保存，下一次录音自动加载，不需要重启。空行和 `#` 开头的注释会被忽略。
+本地词库负责英文拼写、大小写和空格规范化；中文专有名词会提供给 DeepSeek 作为纠错参考，不能保证声学识别一定正确。
+
+全局快捷键 **Ctrl + Shift + F9** 切换 DeepSeek 自动纠错，屏幕显示开启/关闭提示。
+状态保存在 `~/.config/voiceime/deepseek-enabled.txt`（`1` 开启、`0` 关闭），重启后保留。
+关闭后后续纠错请求跳过云端；已经发出的请求仍等待结束。本地识别、词库和标点继续工作。
+快捷键沿用当前 X11 全局键盘监听。
 
 ### 为什么不再默认使用 Vosk
 

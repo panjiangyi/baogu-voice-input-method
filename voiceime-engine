@@ -29,7 +29,8 @@ from pathlib import Path
 
 import numpy as np
 
-from voiceime_glossary import GlossaryCorrector
+from voiceime_glossary import GlossaryCorrector, _read_terms, personal_glossary_path
+from voiceime_settings import llm_enabled
 
 ROOT = Path(__file__).resolve().parent
 RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
@@ -561,7 +562,7 @@ class LLMCorrector:
         if not text or not text.strip():
             self.last_status = "unchanged"
             return text
-        if not getattr(self, "enabled", True):
+        if not llm_enabled(getattr(self, "enabled", True)):
             self.last_status = "disabled"
             return text
         # Retained as an explicit operator kill switch. Normal deployments no
@@ -581,6 +582,9 @@ class LLMCorrector:
             if self.mode in ("rewrite", "aggressive")
             else self.SYSTEM_PROMPT
         )
+        personal_terms = _read_terms(personal_glossary_path())
+        if personal_terms:
+            prompt += "\n专有名词参考（仅在原文涉及对应词语时使用，禁止凭空添加）：" + json.dumps(personal_terms, ensure_ascii=False)
         log(f"LLM call: mode={self.mode} model={self.model} base_chars={len(text)} base_preview={text[:60]!r}")
         body = json.dumps({
             "model": self.model,
@@ -936,7 +940,7 @@ def _best_final_text(
     candidate = glossary.correct(candidate)
     if not has_native_punctuation:
         candidate = punctuation.correct(candidate) or candidate
-    if llm is not None and llm.enabled and candidate:
+    if llm is not None and llm_enabled(llm.enabled) and candidate:
         if session != current_session or start_request > request_id or terminate:
             return candidate
         set_correction_state(session, "correcting")
@@ -1122,6 +1126,7 @@ def main() -> int:
                 break
             handled_request += 1
             try:
+                glossary = GlossaryCorrector()
                 run_utterance(
                     asr, final_asr, llm, glossary, punctuation,
                     bridge, executor, handled_request

@@ -133,7 +133,7 @@ def load_exact_terms() -> list[str]:
     over-corrected.
     """
     if COMPILED.is_file():
-        return _dedupe(_read_terms(COMPILED))
+        return _dedupe(_read_terms(personal_glossary_path()) + _read_terms(COMPILED))
     terms: list[str] = []
     terms.extend(_read_terms(personal_glossary_path()))
     for path in BUILTIN_GLOSSARIES:

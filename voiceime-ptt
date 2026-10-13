@@ -8,6 +8,9 @@ The Sherpa engine is a long-lived event-driven process:
 Final FireRed/LLM refinement is asynchronous inside the engine, so release
 never blocks this xinput event loop and the next press can start immediately.
 """
+import json
+from voiceime_settings import CorrectionShortcut, toggle_llm
+
 import errno
 import fcntl
 import os
@@ -237,6 +240,7 @@ def main():
             time.sleep(1)
             continue
 
+        shortcut = CorrectionShortcut()
         events = KeyEvents(synthetic_devices)
         watcher = subprocess.Popen(
             ["stdbuf", "-oL", "xinput", "test-xi2", "--root"],
@@ -249,6 +253,14 @@ def main():
             if parsed is None:
                 continue
             event, keycode = parsed
+            if shortcut.feed(event, keycode):
+                try:
+                    enabled = toggle_llm(os.environ.get("VOICEIME_LLM_ENABLED", "1") == "1")
+                    with open(os.path.join(RUNTIME, "voiceime-correction.state"), "w", encoding="utf-8") as fh:
+                        json.dump({"session": "toggle", "status": "enabled" if enabled else "disabled", "time": time.time()}, fh)
+                    log("DeepSeek correction " + ("enabled" if enabled else "disabled"))
+                except OSError as ex:
+                    log("cannot save DeepSeek toggle: %r" % ex)
             if keycode != KEYCODE:
                 continue
 
