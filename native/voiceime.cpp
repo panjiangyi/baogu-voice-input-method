@@ -14,8 +14,10 @@
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/utf8.h>
+#include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 
 class VoiceIME : public fcitx::AddonInstance,
                  public fcitx::dbus::ObjectVTable<VoiceIME> {
@@ -30,6 +32,38 @@ public:
     }
 
     bool begin() { return beginImpl(""); }
+
+    // Only expose a bounded snapshot of the active dictation target. Never
+    // inspect other windows, and fail closed for password/sensitive fields.
+    std::tuple<std::string, std::string, std::string>
+    contextSession(const std::string &session) {
+        auto *ic = currentInputContext();
+        if (!ic || session.empty() || session != session_ ||
+            ic->capabilityFlags().test(fcitx::CapabilityFlag::Password) ||
+            ic->capabilityFlags().test(fcitx::CapabilityFlag::Sensitive)) {
+            return {};
+        }
+        std::string before, after;
+        const auto &surrounding = ic->surroundingText();
+        if (ic->capabilityFlags().test(fcitx::CapabilityFlag::SurroundingText) &&
+            surrounding.isValid() && fcitx::utf8::validate(surrounding.text())) {
+            const auto &text = surrounding.text();
+            const size_t cursor = surrounding.cursor();
+            const size_t anchor = surrounding.anchor();
+            const size_t chars = fcitx::utf8::length(text);
+            if (cursor <= chars && anchor <= chars) {
+                const size_t left = std::min(cursor, anchor);
+                const size_t right = std::max(cursor, anchor);
+                const size_t start = left > 500 ? left - 500 : 0;
+                const size_t end = std::min(chars, right + 500);
+                before = text.substr(byteOffset(text, start),
+                                     byteOffset(text, left) - byteOffset(text, start));
+                after = text.substr(byteOffset(text, right),
+                                    byteOffset(text, end) - byteOffset(text, right));
+            }
+        }
+        return {ic->program(), before, after};
+    }
 
     bool beginSession(const std::string &session) {
         if (session.empty() || session.size() > 128) {
@@ -120,6 +154,7 @@ public:
     FCITX_OBJECT_VTABLE_METHOD(begin, "Begin", "", "b");
     FCITX_OBJECT_VTABLE_METHOD(update, "Update", "is", "b");
     FCITX_OBJECT_VTABLE_METHOD(beginSession, "BeginSession", "s", "b");
+    FCITX_OBJECT_VTABLE_METHOD(contextSession, "ContextSession", "s", "sss");
     FCITX_OBJECT_VTABLE_METHOD(updateSession, "UpdateSession", "sis", "b");
     FCITX_OBJECT_VTABLE_METHOD(finishSession, "FinishSession", "ss", "b");
     FCITX_OBJECT_VTABLE_METHOD(previewSession, "PreviewSession", "ss", "b");

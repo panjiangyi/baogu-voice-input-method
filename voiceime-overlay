@@ -97,10 +97,10 @@ class Indicator(Gtk.Window):
         status, changed, session = self.correction()
         if engine == "recording":
             wanted = "recording"
-        elif engine == "finalizing":
-            wanted = "finalizing"
         elif status == "correcting":
             wanted = "correcting"
+        elif engine == "finalizing":
+            wanted = "finalizing"
         elif status in {"success", "failed", "timeout", "enabled", "disabled"} and time.time() - changed < RESULT_SECONDS:
             wanted = status
         else:

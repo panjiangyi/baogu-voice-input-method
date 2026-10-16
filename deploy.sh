@@ -38,11 +38,13 @@ if [ -t 0 ]; then
     printf '%s\n' \
       'Correction mode:' \
       '  1) punctuation — only punctuation/spacing; does not fix words' \
-      '  2) aggressive  — repair Chinese/English recognition errors (default; may change meaning)'
+      '  2) aggressive  — repair Chinese/English recognition errors (default; may change meaning)' \
+      '  3) dictation   — remove fillers/repetition and resolve explicit spoken corrections'
     read -r -p "Choose [2]: " answer
     case "${answer:-2}" in
       1) LLM_MODE=punctuation ;;
       2) LLM_MODE=aggressive ;;
+      3) LLM_MODE=dictation ;;
       *) die "invalid correction mode: $answer" ;;
     esac
 
@@ -55,7 +57,7 @@ if [ -t 0 ]; then
 fi
 
 case "$LLM_ENABLED" in 0|1) ;; *) die "VOICEIME_LLM_ENABLED must be 0 or 1" ;; esac
-case "$LLM_MODE" in punctuation|aggressive) ;; *) die "invalid VOICEIME_LLM_MODE: $LLM_MODE" ;; esac
+case "$LLM_MODE" in punctuation|aggressive|dictation) ;; *) die "invalid VOICEIME_LLM_MODE: $LLM_MODE" ;; esac
 [[ "$LLM_TIMEOUT" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "LLM timeout must be a positive number"
 [[ "$DEEPSEEK_MODEL" =~ ^[A-Za-z0-9._:/+-]+$ ]] || die "model name contains unsupported characters"
 

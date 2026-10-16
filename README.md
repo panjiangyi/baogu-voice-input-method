@@ -65,7 +65,7 @@ journalctl --user -u voiceime-corrector -f   # 仅 legacy FireRed + 本地纠错
 ### 使用
 
 - **按住右 Alt**：开始说话，实时识别结果显示为 Fcitx preedit，不反复修改应用正文。
-- **松开右 Alt**：结束本句。最多等待 1.2 秒的 offline Paraformer final；随后应用词库规范化和本地安全标点。如启用 DeepSeek，还会等待其纠错结果（默认最多 15 秒），最后只 commit 一次。超过 10 秒的长句、final 超时、上一条 final 仍在运行时会直接使用 streaming 结果，并仍可交给 DeepSeek 纠错。
+- **松开右 Alt**：立即关闭录音声波，显示“识别优化中”。若仍有接近最近说话音量的声音，继续收取尾音；连续安静约 0.25 秒即停止，最多延长 3 秒（`VOICEIME_RELEASE_GRACE_SEC` 可配置，设为 0 则立即停止收音）。随后最多等待 1.2 秒的 offline Paraformer final，再应用词库规范化和本地安全标点。如启用 DeepSeek，还会显示“纠错中”并等待结果（默认最多 15 秒），最后只 commit 一次，引擎继续运行并回到待机。收尾期间再次按键会提前结束本句并开始下一句。超过 10 秒的长句、final 超时、上一条 final 仍在运行时会直接使用 streaming 结果，并仍可交给 DeepSeek 纠错。
 - legacy 模式（`VOICEIME_OUTPUT_MODE` 设为 `preedit` 以外的值）仍保留 FireRedASR2 + LLM 的旧重写路径，但默认关闭，需要显式设 `VOICEIME_LLM_ENABLED=1` 才会启用（`punctuation` 安全模式只接受标点/空格变化，实词变化会被拒绝并保留 ASR 原文；API 失败时仍会补一个句末句号）。
 - 屏幕提示：录音时在当前活动显示器下方居中显示动态声波；AI 后处理显示“纠错中”，结束后短暂显示“纠错完成”“纠错失败”“纠错超时”“纠错已开启”“纠错已关闭”。提示窗不会获取键盘焦点。
 - `Ctrl+Alt+V`：免手持开始/停止。
@@ -103,6 +103,36 @@ offline Paraformer large（最多等 1.2 秒）
 - 下一句 PTT 已经开始：停止等待上一句 final；
 - 焦点/输入框/session 改变：最终提交 fail closed；
 - final/punctuation 模型缺失：仍可正常使用 streaming fallback。
+
+### 借鉴 Typeless 的输入体验
+
+新增可选 `VOICEIME_LLM_MODE=dictation`：在云端纠错时整理无意义口头语、
+重复和明确的口头自我纠正，同时要求保留语气和原意。此模式允许改写，
+效果仍需真人录音验收；原有 `punctuation` / `aggressive` 模式继续可用。
+
+上下文辅助默认开启，可为云端纠错提供当前应用名，以及输入位置前后
+各最多 500 个 Unicode 字符。仅从当前 Fcitx 会话获取，不读取其他窗口，
+不包含选区正文；密码或 sensitive 输入框不提供上下文。设置
+`VOICEIME_CONTEXT_ENABLED=0` 可关闭。
+应用不支持 surrounding-text 或尚未升级原生插件时自动使用无上下文纠错。
+启用云端纠错时，这部分文字会随当前口述文本发送到已配置的 DeepSeek 接口；
+云端纠错关闭时不会发送。
+
+`VOICEIME_LLM_MAX_WAIT` 设置最终提交等待云端纠错的总时间（秒，默认沿用
+`VOICEIME_LLM_TIMEOUT`）。超时或再次按下 PTT 时立即保留本地候选；迟到结果
+不会再改正文。底层 HTTP 请求可能仍运行到网络超时，期间后续句子跳过云端，
+不堆积请求。本地识别继续工作。长句输出预算随长度增长，服务端明确报告
+输出截断时保留完整原文。
+
+例如，下次部署时启用口语整理，并将云端等待限制为 3 秒：
+
+```bash
+VOICEIME_LLM_ENABLED=1 VOICEIME_LLM_MODE=dictation \
+VOICEIME_LLM_MAX_WAIT=3 ./deploy.sh
+```
+
+交互部署时选择 `3) dictation`。详细证据、取舍和验证范围见
+[Typeless 调研与改进记录](docs/typeless-research.md)。
 
 ### 中英混输词库
 

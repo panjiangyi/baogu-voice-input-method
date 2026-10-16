@@ -574,3 +574,153 @@ USB
 wav
 WAV
 systemd user service
+
+# 工程实践与 Alara 技术栈补充（2026-10-14）
+monorepo
+worktree
+git worktree
+merge queue
+merge conflict resolution
+feature flag
+feature toggle
+acceptance test
+smoke test
+contract test
+snapshot test
+load test
+stress test
+test coverage
+test fixture
+mock
+mocking
+assertion
+reproduction
+repro
+root cause
+race condition
+deadlock
+lock contention
+idempotency
+idempotent
+exponential backoff
+circuit breaker
+connection pool
+thread pool
+rate limiting
+backpressure
+debounce
+throttle
+optimistic update
+optimistic locking
+pessimistic locking
+single-flight
+request deduplication
+cache invalidation
+cache hit
+cache miss
+TTL
+schema validation
+schema drift
+data ingestion
+data pipeline
+data warehouse
+data lake
+entity resolution
+record linkage
+data reconciliation
+batch processing
+incremental sync
+cart sync
+session persistence
+session refresh
+multi-tenant
+multi-tenancy
+tenant isolation
+row-level security
+RBAC
+least privilege
+secret rotation
+canary deployment
+blue-green deployment
+rolling deployment
+preview deployment
+serverless
+cold start
+SSR
+SSG
+ISR
+CSR
+App Router
+Server Actions
+React Compiler
+accessibility
+ARIA
+responsive design
+viewport
+focus trap
+hydration mismatch
+TypeError
+ValueError
+KeyError
+AbortController
+Promise.all
+Promise.allSettled
+EasyPost
+Sanity
+Turborepo
+Turbopack
+Drizzle ORM
+Drizzle Kit
+shadcn/ui
+Tailwind CSS
+Radix UI
+React Hook Form
+Zod
+Orval
+Playwright
+Vitest
+pytest
+HTTPX
+BeautifulSoup
+Pydantic
+pydoll
+Browserbase
+Stagehand
+DuckDB
+Splink
+Metabase
+Apache Airflow
+MWAA
+DAG
+ETL
+ELT
+Fargate
+Terraform
+SSM
+EFS
+ACM
+WAF
+Upstash
+Resend
+Twilio
+Intercom
+Lucide
+Recharts
+Lodash
+Papa Parse
+ESLint
+Prettier
+Husky
+OpenAPI
+Swagger
+Amazon Bedrock
+Vercel AI SDK
+TanStack Query
+Better Auth
+PostHog
+Klaviyo
+Hono
+SurgiMac
+PureLife
+Davis Dental
+Frontier Dental

@@ -171,6 +171,33 @@ class LLMCorrectorTests(unittest.TestCase):
             self.assertEqual(c.correct("今天气像很好"), "今天气像很好")
             self.assertEqual(c.last_status, "rejected")
 
+    def test_dictation_separates_instructions_and_bounded_context(self):
+        with StubServer([{"content": [{"type": "text", "text": "明天下午四点开会。"}]}]) as srv:
+            with _with_env({"VOICEIME_LLM_ENABLED": "1", "VOICEIME_LLM_MODE": "dictation",
+                            "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
+                c = Corrector()
+                result = c.correct("嗯明天下午三点不四点开会", context={
+                    "app": "chat", "before": "前" * 900,
+                    "after": "后" * 900, "unrelated": "not sent"})
+            self.assertEqual(result, "明天下午四点开会。")
+            request = srv.requests[0]
+            data = json.loads(request["messages"][0]["content"])
+            self.assertIn("自我纠正", request["system"])
+            self.assertEqual(data["text"], "嗯明天下午三点不四点开会")
+            self.assertEqual(data["context"], {"app": "chat", "before": "前" * 500,
+                                               "after": "后" * 500})
+
+    def test_truncated_long_response_preserves_original(self):
+        original = "今天讨论项目的部署问题" * 200
+        with StubServer([{"stop_reason": "max_tokens", "content": [
+                {"type": "text", "text": "今天讨论"}]}]) as srv:
+            with _with_env({"VOICEIME_LLM_ENABLED": "1", "VOICEIME_LLM_MODE": "dictation",
+                            "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
+                c = Corrector()
+                self.assertEqual(c.correct(original), original)
+            self.assertEqual(c.last_status, "rejected")
+            self.assertGreater(srv.requests[0]["max_tokens"], 256)
+
     def test_timeout_has_distinct_status(self):
         c = Corrector.__new__(Corrector)
         c._available = True

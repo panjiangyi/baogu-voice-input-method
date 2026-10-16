@@ -80,6 +80,24 @@ class FinalPaddingTests(unittest.TestCase):
 
 
 class ReleaseTailTests(unittest.TestCase):
+    def test_quiet_tail_stops_without_waiting_three_seconds(self):
+        detector = ENGINE["ReleaseTailDetector"]()
+        detector.feed(np.full(320, 4000, dtype=np.int16).tobytes(), 0.0)
+        detector.release(0.1)
+        detector.feed(np.full(320, 100, dtype=np.int16).tobytes(), 0.2)
+        self.assertFalse(detector.finished(0.3))
+        self.assertTrue(detector.finished(0.36))
+
+    def test_similar_volume_extends_tail_but_is_bounded(self):
+        detector = ENGINE["ReleaseTailDetector"]()
+        detector.feed(np.full(320, 4000, dtype=np.int16).tobytes(), 0.0)
+        detector.release(0.1)
+        detector.feed(np.full(320, 2500, dtype=np.int16).tobytes(), 0.3)
+        self.assertFalse(detector.finished(0.4))
+        self.assertTrue(detector.finished(0.56))
+        detector.feed(np.full(320, 2500, dtype=np.int16).tobytes(), 3.05)
+        self.assertTrue(detector.finished(3.11))
+
     def test_audio_arriving_after_release_is_decoded_before_finish(self):
         fn = ENGINE["run_utterance"]
         asr = Mock()
@@ -94,16 +112,17 @@ class ReleaseTailTests(unittest.TestCase):
         poller = Mock()
         poller.poll.return_value = [(1, 1)]
         clock = [0.0]
+        states = []
 
         def read_tail(*_args):
-            clock[0] += 0.2
-            return b"\x01\x00" * 160
+            clock[0] += 0.5
+            return np.full(160, 2000, dtype=np.int16).tobytes()
 
         with patch.dict(fn.__globals__, start_request=1, stop_request=1,
-                        terminate=False, RELEASE_GRACE_SEC=0.35,
+                        terminate=False, RELEASE_GRACE_SEC=3.0,
                         OUTPUT_MODE="legacy",
                         start_recorder=lambda _: recorder, resolve_mic=lambda: "",
-                        stop_recorder=lambda _: b"", set_state=lambda _: None,
+                        stop_recorder=lambda _: b"", set_state=states.append,
                         set_correction_state=lambda *_: None), \
              patch("select.poll", return_value=poller), \
              patch("os.read", side_effect=read_tail), \
@@ -111,10 +130,12 @@ class ReleaseTailTests(unittest.TestCase):
             identity = Mock(correct=lambda text: text)
             fn(asr, Mock(), Mock(), identity, identity, bridge, executor, 1)
 
-        self.assertEqual(asr.accept_pcm.call_count, 2)
+        self.assertEqual(clock[0], 3.0)
+        self.assertEqual(states[:2], ["recording", "finalizing"])
+        self.assertEqual(asr.accept_pcm.call_count, 6)
         asr.finalize.assert_called_once()
         self.assertEqual(executor.submit.call_args.args[2], "最后一个字")
-        self.assertEqual(len(executor.submit.call_args.args[3]), 640)
+        self.assertEqual(len(executor.submit.call_args.args[3]), 1920)
 
 
 class FinalRecognizerConfigTests(unittest.TestCase):

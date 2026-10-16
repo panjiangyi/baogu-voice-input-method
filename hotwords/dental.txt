@@ -98,3 +98,24 @@ intraoral scanner
 dental scanner
 dental unit
 dental chair
+
+# Alara 项目供应商与品牌补充（2026-10-14）
+Alara Exclusive
+Alara Pro
+InnerConnect
+DDS
+AR Instrumed
+Sky Dental
+Brasseler
+Brasseler USA
+NuSmile
+TDSC
+Practicon
+Ultradent
+EasyPost
+SurgiMac
+PureLife
+PureLife Dental
+Davis Dental
+Frontier Dental
+Hey Dental

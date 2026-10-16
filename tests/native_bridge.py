@@ -51,6 +51,9 @@ def bridge(method, args=None):
 assert bridge(
     "BeginSession", GLib.Variant("(s)", ("session-1",))
 ) == (True,)
+assert bridge("ContextSession", GLib.Variant("(s)", ("session-1",))) == (
+    "voiceime-test", "已有文字", "")
+assert bridge("ContextSession", GLib.Variant("(s)", ("stale",))) == ("", "", "")
 start = time.monotonic()
 assert bridge(
     "UpdateSession",
@@ -165,5 +168,18 @@ assert bridge(
     GLib.Variant("(sis)", ("session-2", 0, "不应输入")),
 ) == (False,)
 
-print("PASS: legacy guards + preedit atomic final commit")
+# Context slicing uses Unicode characters, excludes selected text, and is
+# bounded independently on each side. Sensitive contexts expose nothing.
+call(name, path, interface, "FocusIn")
+call(name, path, interface, "SetSurroundingText",
+     GLib.Variant("(suu)", ("前" * 700 + "选中" + "后" * 700, 700, 702)))
+assert bridge("BeginSession", GLib.Variant("(s)", ("context",))) == (True,)
+assert bridge("ContextSession", GLib.Variant("(s)", ("context",))) == (
+    "voiceime-test", "前" * 500, "后" * 500)
+for flag in (1 << 3, 1 << 36):
+    call(name, path, interface, "SetCapability",
+         GLib.Variant("(t)", ((1 << 1) | (1 << 6) | flag,)))
+    assert bridge("ContextSession", GLib.Variant("(s)", ("context",))) == ("", "", "")
+
+print("PASS: legacy guards + preedit atomic final commit + bounded context")
 print("Two native updates: %.1f ms" % elapsed)

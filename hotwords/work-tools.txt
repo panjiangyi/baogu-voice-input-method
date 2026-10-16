@@ -55,3 +55,120 @@ ALB
 ELB
 AWS CLI
 CloudFormation
+
+# 产品经理、产品分析与采购业务常用词（2026-10-14）
+product manager
+product management
+product requirements
+product requirements document
+PRD
+technical specification
+acceptance criteria
+user story
+use case
+user journey
+user flow
+user persona
+user research
+user interview
+usability testing
+customer feedback
+pain point
+Jobs to Be Done
+JTBD
+product-market fit
+PMF
+minimum viable product
+MVP
+proof of concept
+PoC
+prototype
+wireframe
+mockup
+design system
+Figma
+roadmap
+product roadmap
+backlog
+sprint planning
+sprint review
+retrospective
+standup
+stakeholder
+scope creep
+trade-off
+prioritization
+RICE
+ICE
+MoSCoW
+OKR
+KPI
+North Star metric
+A/B testing
+conversion rate
+conversion funnel
+activation
+retention
+churn
+cohort analysis
+segmentation
+feature adoption
+customer acquisition
+CAC
+LTV
+ARPU
+ARR
+MRR
+GMV
+NPS
+CSAT
+CTR
+CVR
+bounce rate
+time to value
+go-to-market
+GTM
+product launch
+onboarding
+offboarding
+self-service
+B2B
+B2C
+SaaS
+pricing strategy
+value proposition
+competitive analysis
+product discovery
+product analytics
+event tracking
+session replay
+heatmap
+procurement
+purchase order
+PO
+RFQ
+MOQ
+MAP
+backorder
+out of stock
+OOS
+in stock
+lead time
+split shipment
+remittance
+payout
+reconciliation
+free gift
+free shipping
+house brand
+vendor portal
+vendor onboarding
+product detail page
+PDP
+shopping cart
+order tracking
+order history
+price override
+bulk upload
+SKU matching
+catalog management
