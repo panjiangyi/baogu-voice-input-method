@@ -7,6 +7,8 @@ COOKIE="${XDG_RUNTIME_DIR:-/tmp}/voiceime-$(id -u).cookie"
 STATE="${XDG_RUNTIME_DIR:-/tmp}/voiceime-engine.state"
 READY="${XDG_RUNTIME_DIR:-/tmp}/voiceime-engine.ready"
 CORRECTION_STATE="${XDG_RUNTIME_DIR:-/tmp}/voiceime-correction.state"
+ASK_REQUEST="${XDG_RUNTIME_DIR:-/tmp}/voiceime-ask.request"
+ASK_STATE="${XDG_RUNTIME_DIR:-/tmp}/voiceime-ask.state"
 
 export DISPLAY="${DISPLAY:-:1}"
 export LD_LIBRARY_PATH="$ROOT/bin:${LD_LIBRARY_PATH:-}"
@@ -90,5 +92,5 @@ voiceime_kill_all() {
   pids="$(voiceime_pids)"
   [ -n "$pids" ] && kill -KILL $pids 2>/dev/null || true
   pkill -u "$(id -u)" -x parec 2>/dev/null || true
-  rm -f "$COOKIE" "$STATE" "$READY" "$CORRECTION_STATE"
+  rm -f "$COOKIE" "$STATE" "$READY" "$CORRECTION_STATE" "$ASK_REQUEST" "$ASK_STATE"
 }

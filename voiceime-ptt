@@ -10,6 +10,7 @@ never blocks this xinput event loop and the next press can start immediately.
 """
 import json
 from voiceime_settings import CorrectionShortcut, toggle_llm
+from voiceime_selection import capture_selection
 
 import errno
 import fcntl
@@ -32,6 +33,12 @@ READY = os.path.join(RUNTIME, "voiceime-engine.ready")
 STATE = os.path.join(RUNTIME, "voiceime-engine.state")
 ENGINE_MODE = os.environ.get("VOICEIME_ENGINE", "sherpa").lower()
 KEYCODE = int(os.environ.get("VOICEIME_PTT_KEYCODE", "108"))
+ASK_ENABLED = os.environ.get("VOICEIME_ASK_ENABLED", "1") == "1"
+ASK_KEYCODE = int(os.environ.get("VOICEIME_ASK_KEYCODE", "38"))  # 'a' on evdev
+ASK_MODIFIER = int(os.environ.get("VOICEIME_ASK_MODIFIER_KEYCODE", "64"))  # left Alt
+ASK_REQUEST = os.path.join(RUNTIME, "voiceime-ask.request")
+ASK_STATE = os.path.join(RUNTIME, "voiceime-ask.state")
+ASK_WINDOW = os.path.join(ROOT, "voiceime-ask")
 
 EVENT_RE = re.compile(r"^EVENT type \d+ \((RawKeyPress|RawKeyRelease)\)")
 DETAIL_RE = re.compile(r"^\s+detail: (\d+)")
@@ -60,9 +67,68 @@ class KeyEvents:
         return None
 
 
+class AskShortcut:
+    """Left Alt + '/' as hold-to-talk for the selection question feature.
+
+    Right Alt is the dictation key, so ask uses left Alt to stay independent.
+    Pressing '/' while left Alt is held starts; releasing either key stops.
+    """
+
+    def __init__(self, keycode=None, modifier=None):
+        self.keycode = ASK_KEYCODE if keycode is None else keycode
+        self.modifier = ASK_MODIFIER if modifier is None else modifier
+        self.pressed = set()
+        self.active = False
+
+    def feed(self, event, keycode):
+        if event == "RawKeyPress":
+            repeated = keycode in self.pressed
+            self.pressed.add(keycode)
+            if (not self.active and keycode == self.keycode and not repeated
+                    and self.modifier in self.pressed):
+                self.active = True
+                return "press"
+            return None
+        had = keycode in self.pressed
+        self.pressed.discard(keycode)
+        if self.active and had and keycode in (self.keycode, self.modifier):
+            self.active = False
+            return "release"
+        return None
+
+
 def log(msg):
     sys.stderr.write("[voiceime-ptt] %s\n" % msg)
     sys.stderr.flush()
+
+
+def write_ask_request(selection):
+    temporary = ASK_REQUEST + ".tmp"
+    try:
+        with open(temporary, "w", encoding="utf-8") as fh:
+            json.dump({"selection": selection, "time": time.time()}, fh)
+        os.replace(temporary, ASK_REQUEST)
+    except OSError as ex:
+        log("cannot write ask request: %r" % (ex,))
+    # Drop the previous answer so the window shows "listening" immediately
+    # instead of the last question's answer while this one is being recorded.
+    try:
+        os.unlink(ASK_STATE)
+    except OSError:
+        pass
+
+
+def ensure_ask_window():
+    if not os.path.isfile(ASK_WINDOW):
+        return
+    try:
+        subprocess.Popen(
+            [ASK_WINDOW], env=child_env(), start_new_session=True,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as ex:
+        log("cannot start ask window: %r" % (ex,))
 
 
 def child_env():
@@ -228,6 +294,7 @@ def main():
         return 1
 
     held = False
+    asking = False
     while not stopping["now"]:
         try:
             ids = subprocess.check_output(
@@ -241,6 +308,7 @@ def main():
             continue
 
         shortcut = CorrectionShortcut()
+        ask = AskShortcut()
         events = KeyEvents(synthetic_devices)
         watcher = subprocess.Popen(
             ["stdbuf", "-oL", "xinput", "test-xi2", "--root"],
@@ -261,6 +329,24 @@ def main():
                     log("DeepSeek correction " + ("enabled" if enabled else "disabled"))
                 except OSError as ex:
                     log("cannot save DeepSeek toggle: %r" % ex)
+            action = ask.feed(event, keycode)
+            if action == "press":
+                if held or asking or not ASK_ENABLED:
+                    continue
+                selection = capture_selection()
+                # Start the engine before writing the request: a cold start
+                # clears stale ask files in its own initialization.
+                if not engine.alive() and not engine.start():
+                    continue
+                write_ask_request(selection)
+                asking = True
+                ensure_ask_window()
+                log("ask requested selection_chars=%d" % len(selection))
+                engine.resume()
+            elif action == "release":
+                if asking:
+                    asking = False
+                    engine.suspend()
             if keycode != KEYCODE:
                 continue
 
@@ -283,6 +369,7 @@ def main():
         if stopping["now"]:
             break
         held = False
+        asking = False
         engine.suspend()
         log("xinput watcher exited; restarting")
         time.sleep(1)

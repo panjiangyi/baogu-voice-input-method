@@ -1,5 +1,7 @@
 <a id="english-version"></a>
 
+**English** · [中文版 / Chinese version ↓](#chinese-version)
+
 # VoiceIME — Ubuntu Chinese & Mixed Chinese/English Voice Input
 
 > **PR #6 recommended architecture**: Sherpa bilingual streaming Paraformer real-time preedit →
@@ -8,19 +10,20 @@
 
 Targets **Ubuntu 24.04 + GNOME + Fcitx5**; the PTT hotkey listener currently focuses on X11.
 
-🌐 **Languages**: [English](#english-version) · [中文 / Chinese ↓](#chinese-version)
-
 ---
 
 ## Table of Contents
 
+- [Getting Started](#getting-started)
 - [Quick Reference](#quick-reference)
 - [Recommended Install (daily path)](#recommended-install-daily-path)
 - [Daily Use](#daily-use)
 - [PR #6 Architecture](#pr-6-architecture-preedit--bounded-final)
 - [Optional DeepSeek Correction](#optional-deepseek-correction)
+- [Using an OpenAI-Compatible API](#using-an-openai-compatible-api)
 - [Typeless-Inspired Dictation](#typeless-inspired-dictation)
 - [Mixed Chinese/English Glossary](#mixed-chineseenglish-glossary)
+  - [Customize Your Word Bank](#customize-your-word-bank)
 - [Service & Troubleshooting](#service--troubleshooting)
 - [Why Vosk Is No Longer the Default](#why-vosk-is-no-longer-the-default)
 - [Evaluating with Real-Voice Recordings](#evaluating-with-real-voice-recordings)
@@ -28,6 +31,65 @@ Targets **Ubuntu 24.04 + GNOME + Fcitx5**; the PTT hotkey listener currently foc
 - [Environment Requirements](#environment-requirements)
 - [Legacy POC Reference](#legacy-poc-reference)
 - [Known Issues](#known-issues)
+
+---
+
+## Getting Started
+
+### 1. Check your system
+
+- **Ubuntu 24.04 + GNOME on X11.** On the login screen choose **"Ubuntu on Xorg"**, then
+  confirm with `echo $XDG_SESSION_TYPE` (it should print `x11`). Wayland is not supported yet.
+- **Fcitx5 as your input-method framework.** If you are still on IBus:
+
+  ```bash
+  sudo apt-get install -y fcitx5
+  im-config -n fcitx5     # then log out and log back in
+  ```
+
+- A working microphone (USB mics work best).
+- Run everything as your normal user, **not root**. The installer asks for your sudo
+  password only when system packages are missing.
+
+### 2. Clone and deploy
+
+```bash
+git clone https://github.com/panjiangyi/laopan-voice-input-method.git
+cd laopan-voice-input-method
+./deploy.sh
+```
+
+`deploy.sh` is the one command you need. It:
+
+1. installs any missing apt packages and the `sherpa-onnx` Python runtime;
+2. downloads the speech models into `models/` (first run only);
+3. builds and installs the Fcitx5 addon, then restarts Fcitx5;
+4. installs and starts the `voiceime-ptt` and `voiceime-overlay` user services.
+
+During the run it asks **"Enable DeepSeek correction after each utterance? [y/N]"**. Answer
+`N` for a fully local setup. You can turn AI correction on later; see
+[Optional DeepSeek Correction](#optional-deepseek-correction) or
+[Using an OpenAI-Compatible API](#using-an-openai-compatible-api).
+
+If deploy prints `WARNING: final quality models are incomplete`, run
+`bash scripts/11-setup-quality.sh` once, then run `./deploy.sh` again.
+
+### 3. Verify and dictate
+
+```bash
+./voiceime-status        # "state: suspended" means idle and ready
+```
+
+Click into any text field, **hold right Alt**, speak, and **release**. Text appears live
+while you talk and is committed when you let go.
+
+### 4. Update
+
+```bash
+git pull && ./deploy.sh
+```
+
+Deploy is idempotent: anything already installed or downloaded is skipped.
 
 ---
 
@@ -41,6 +103,7 @@ Targets **Ubuntu 24.04 + GNOME + Fcitx5**; the PTT hotkey listener currently foc
 | Ctrl + Alt + V | Hands-free toggle: press once to start, again to stop |
 | Ctrl + Alt + B | End current dictation and commit |
 | Ctrl + Shift + F9 | Toggle DeepSeek auto-correction (state is persisted) |
+| **Hold Alt + A** (left Alt) | Ask a spoken question about the mouse-selected text; the AI answer opens in its own window |
 
 ### CLI / Service
 
@@ -62,11 +125,16 @@ journalctl --user -u voiceime-corrector  -f   # Legacy FireRed + local corrector
 | `VOICEIME_LLM_MODE` | `aggressive` (default) / `punctuation` / `dictation` |
 | `VOICEIME_LLM_TIMEOUT` | Cloud-correction request timeout (seconds) |
 | `VOICEIME_LLM_MAX_WAIT` | Total time final commit waits for cloud correction (seconds) |
-| `DEEPSEEK_MODEL` | Default `deepseek-v4-flash` |
+| `DEEPSEEK_MODEL` | Model ID; default `deepseek-v4-flash` (set at deploy time) |
+| `DEEPSEEK_BASE_URL` / `DEEPSEEK_API_KEY` | AI correction endpoint and key, in `.env` (any provider, despite the name) |
+| `VOICEIME_LLM_API` | `anthropic` (default, `/v1/messages`) or `openai` (`/chat/completions`) |
 | `VOICEIME_CORRECTOR_ZEN_MODEL` / `_REASONING` | Switch model / reasoning tier (low/medium/high/xhigh) |
 | `VOICEIME_RELEASE_GRACE_SEC` | Trailing-sound wait after key release (default 0.25, capped at 3s, 0 = stop immediately) |
 | `VOICEIME_CONTEXT_ENABLED` | 0 = disable app name / surrounding-text context |
 | `VOICEIME_PTT_KEYCODE` | Override PTT physical keycode (default right Alt = 108) |
+| `VOICEIME_ASK_ENABLED` | 1 (default) = enable selection question with Alt + A |
+| `VOICEIME_ASK_KEYCODE` / `VOICEIME_ASK_MODIFIER_KEYCODE` | Ask hotkey keycodes (default 38 = `a`, 64 = left Alt) |
+| `VOICEIME_ASK_MAX_TOKENS` | Answer length budget for the selection question (default 2048) |
 
 Secrets are read only from the project root `.env` (mode 600).
 
@@ -254,6 +322,76 @@ During interactive deploy, choose `3) dictation`.
 
 ---
 
+## Using an OpenAI-Compatible API
+
+AI correction talks to DeepSeek's Anthropic-compatible endpoint by default. It can use **any
+provider that speaks the OpenAI Chat Completions API** instead: OpenAI, DeepSeek (OpenAI
+format), OpenRouter, SiliconFlow, Alibaba DashScope, or a local Ollama / vLLM / LM Studio
+server.
+
+### 1. Put the endpoint in `.env`
+
+Create or edit `.env` in the project root:
+
+```bash
+VOICEIME_LLM_API=openai
+DEEPSEEK_BASE_URL=https://api.openai.com/v1
+DEEPSEEK_API_KEY=sk-your-key
+```
+
+```bash
+chmod 600 .env
+```
+
+- The variables keep their historical `DEEPSEEK_` prefix but work for **any provider**.
+- `DEEPSEEK_BASE_URL` is everything **before** `/chat/completions`. VoiceIME appends
+  `/chat/completions` itself, so do not include it.
+- The key is sent as `Authorization: Bearer <key>`. Local servers that ignore keys still
+  need a non-empty placeholder such as `DEEPSEEK_API_KEY=local`.
+
+Common base URLs:
+
+| Provider | `DEEPSEEK_BASE_URL` |
+|---|---|
+| OpenAI | `https://api.openai.com/v1` |
+| DeepSeek (OpenAI format) | `https://api.deepseek.com/v1` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| SiliconFlow | `https://api.siliconflow.cn/v1` |
+| Alibaba DashScope | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| Ollama (local) | `http://localhost:11434/v1` |
+
+### 2. Choose the model and enable correction at deploy time
+
+The model ID is written into the systemd service by `deploy.sh`, so set it there, **not** in
+`.env`:
+
+```bash
+VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<your-model-id> ./deploy.sh
+```
+
+Or run `./deploy.sh`, answer `y`, and type the model ID at the
+`DeepSeek model [...]` prompt. Use the exact model ID from your provider's model list.
+
+Deploy sends one fixed test sentence through the API. If that call fails, deploy stops and
+the running service keeps its old configuration. Check the URL, key, and model, then run it
+again.
+
+### 3. Tips
+
+- Pick a **fast, non-reasoning** chat model. Every sentence waits for the reply, at most
+  `VOICEIME_LLM_MAX_WAIT` seconds, before it is committed. Slow models just time out, and the
+  local text is used instead.
+- Modes (`punctuation` / `aggressive` / `dictation`), context assistance, and the
+  `Ctrl + Shift + F9` toggle behave the same with every provider.
+- To switch back to DeepSeek's default endpoint, delete the `VOICEIME_LLM_API` line (or set
+  it to `anthropic`) and restore
+  `DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic`, then run `./deploy.sh` again.
+- Privacy: when correction is on, the dictated sentence, your personal hotwords, and (unless
+  `VOICEIME_CONTEXT_ENABLED=0`) up to 500 characters of surrounding text are sent to the
+  provider you configure.
+
+---
+
 ## Typeless-Inspired Dictation
 
 `VOICEIME_LLM_MODE=dictation` cleans meaningless filler, repetition, and explicit verbal
@@ -281,21 +419,72 @@ Full glossary files live in `hotwords/`: `aliases.tsv` / `compiled.txt` /
 `contextual-aliases.tsv` / `dental.txt` / `priority.txt` / `programming.txt` /
 `work-tools.txt`.
 
-### Personal hotwords
+### Customize Your Word Bank
+
+There are three layers. Pick the one that matches the problem:
+
+| You want to… | Edit | Format |
+|---|---|---|
+| Teach a term and its correct spelling (brand, project, code name) | `~/.config/voiceime/hotwords.txt` | one term per line |
+| Fix one specific English mishearing everywhere | `hotwords/aliases.tsv` | `misheard<TAB>correct` |
+| Fix a mishearing that is only wrong in a certain context | `hotwords/contextual-aliases.tsv` | `misheard<TAB>correct<TAB>ctx1\|ctx2` |
+
+All three are reloaded **at the start of every dictation**. You don't need to restart
+anything.
+
+#### 1. Personal terms (start here)
 
 ```bash
 ./voiceime-hotwords add "MyProject" "Customer Brand" "New Dental Product"
 ./voiceime-hotwords list
 ./voiceime-hotwords remove "MyProject"
+./voiceime-hotwords path      # print the file location
 ```
 
-Personal words are saved to `~/.config/voiceime/hotwords.txt`, UTF-8 TXT, one word per line.
-You can edit and save directly; the next recording auto-loads them, no restart needed. Empty
-lines and `#` comments are ignored.
+The list lives in `~/.config/voiceime/hotwords.txt` (UTF-8, one term per line; blank lines
+and `#` comments are ignored). You can also edit the file directly. Your personal terms:
 
-> The local glossary handles English spelling, case, and spacing; Chinese proper nouns are
-> passed to DeepSeek as correction context, but **acoustic recognition itself is not
-> guaranteed**.
+- are used **locally** to repair the spelling, case, and spacing of English / ASCII terms
+  (for example `get hub` → `GitHub`);
+- are sent to the AI corrector, when it is enabled, as a vocabulary hint (the first 128
+  terms). This is the only way Chinese terms help, because the local glossary never rewrites
+  Chinese characters.
+
+Add proper nouns, product names, and identifiers. Don't add ordinary English words; they
+bias the corrector toward false matches.
+
+#### 2. Mishearing → correct term
+
+When the recognizer keeps producing the same wrong English phrase, map it in
+`hotwords/aliases.tsv`. Separate the two columns with a **real tab character**:
+
+```tsv
+Henry Shine	Henry Schein
+Dabby Dental	Darby Dental
+```
+
+Matching ignores case, spaces, and punctuation, and must cover the whole phrase. It only
+applies to English / ASCII text.
+
+#### 3. Context-guarded replacements
+
+Some English names come out as ordinary Chinese words (for example "Linear" → `力量`).
+Replacing those everywhere would damage normal Chinese. `hotwords/contextual-aliases.tsv`
+replaces them only when one of the listed context words appears nearby:
+
+```tsv
+力量	Linear	ticket|issue|sprint|cycle|backlog|workspace
+```
+
+Columns: exact misrecognized text, correct term, then trigger words separated by `|` or `,`.
+Only add artifacts you have actually seen in your own dictation.
+
+> `hotwords/*.tsv` and the built-in `*.txt` lists are tracked in git. If you edit them,
+> commit the changes to your fork so `git pull` doesn't conflict. Your personal
+> `~/.config/voiceime/hotwords.txt` is outside the repo and never conflicts.
+
+> The word bank fixes spelling and wording **after** recognition. It cannot make the
+> acoustic model hear a word it never recognized.
 
 ### DeepSeek toggle
 
@@ -546,6 +735,8 @@ directly into the current input field without copy-paste**.
 
 <a id="chinese-version"></a>
 
+[English version ↑](#english-version) · **中文**
+
 # VoiceIME — Ubuntu 中文 / 中英混合语音输入
 
 > **PR #6 推荐架构**：Sherpa 双语 streaming Paraformer 实时 preedit →
@@ -554,19 +745,21 @@ directly into the current input field without copy-paste**.
 
 适用于 **Ubuntu 24.04 + GNOME + Fcitx5**；PTT 热键监听当前以 X11 为主。
 
-🌐 **语言**: [English ↑](#english-version) · [中文](#chinese-version)
-
 ---
 
 ## 目录
 
+- [快速上手](#快速上手)
 - [快速参考](#快速参考)
 - [推荐安装（日用路径）](#推荐安装日用路径)
 - [日常使用](#日常使用)
 - [PR #6 架构](#pr-6-架构preedit--bounded-final)
 - [可选 DeepSeek 纠错](#可选-deepseek-纠错)
+- [接入 OpenAI 兼容 API](#接入-openai-兼容-api)
+- [选中文字提问（Alt+A）](#选中文字提问alta)
 - [借鉴 Typeless 的输入体验](#借鉴-typeless-的输入体验)
 - [中英混输词库](#中英混输词库)
+  - [自定义词库](#自定义词库)
 - [服务与排错](#服务与排错)
 - [为什么不再默认使用 Vosk](#为什么不再默认使用-vosk)
 - [用真人录音评测](#用真人录音评测)
@@ -574,6 +767,66 @@ directly into the current input field without copy-paste**.
 - [环境要求](#环境要求)
 - [Legacy POC 资料](#legacy-poc-资料)
 - [已知问题](#已知问题)
+
+---
+
+## 快速上手
+
+### 1. 检查系统
+
+- **Ubuntu 24.04 + GNOME，X11 会话。** 登录界面选择 **“Ubuntu on Xorg”**，再用
+  `echo $XDG_SESSION_TYPE` 确认输出为 `x11`。暂不支持 Wayland。
+- **输入法框架为 Fcitx5。** 如果还在用 IBus：
+
+  ```bash
+  sudo apt-get install -y fcitx5
+  im-config -n fcitx5     # 然后注销并重新登录
+  ```
+
+- 一个能用的麦克风（推荐 USB 麦克风）。
+- 用普通用户运行，**不要用 root**。只有缺少系统包时安装脚本才会要 sudo 密码。
+
+### 2. 克隆并部署
+
+```bash
+git clone https://github.com/panjiangyi/laopan-voice-input-method.git
+cd laopan-voice-input-method
+./deploy.sh
+```
+
+只需要这一条命令。`deploy.sh` 会：
+
+1. 安装缺少的 apt 包和 `sherpa-onnx` Python 运行时；
+2. 把语音模型下载到 `models/`（仅首次）；
+3. 编译并安装 Fcitx5 插件，然后重启 Fcitx5；
+4. 安装并启动 `voiceime-ptt` 和 `voiceime-overlay` 两个用户级服务。
+
+运行过程中会问 **“Enable DeepSeek correction after each utterance? [y/N]”**。想要完全本地
+运行就答 `N`。之后随时可以开启 AI 纠错，见 [可选 DeepSeek 纠错](#可选-deepseek-纠错) 或
+[接入 OpenAI 兼容 API](#接入-openai-兼容-api)。
+
+如果部署提示 `WARNING: final quality models are incomplete`，先运行一次
+`bash scripts/11-setup-quality.sh`，再重新运行 `./deploy.sh`。
+
+### 3. 验证并开始听写
+
+```bash
+./voiceime-status        # 显示 "state: suspended" 表示已就绪、处于待机
+```
+
+点进任意输入框，**按住右 Alt** 说话，**松开**即上屏。说话时文字实时显示，松键后一次性提交。
+
+想针对某段文字提问：用鼠标**选中文字**，**按住左 Alt + A** 说话，松开后 AI 回答会弹出一个独立窗口。
+
+详见「[选中文字提问](#选中文字提问alta)」。
+
+### 4. 更新
+
+```bash
+git pull && ./deploy.sh
+```
+
+部署是幂等的：已安装、已下载的内容会自动跳过。
 
 ---
 
@@ -587,6 +840,7 @@ directly into the current input field without copy-paste**.
 | Ctrl + Alt + V | 免手持切换：按一下开始，再按一下停止 |
 | Ctrl + Alt + B | 结束当前听写并上屏 |
 | Ctrl + Shift + F9 | 切换 DeepSeek 自动纠错（状态持久化） |
+| **按住 Alt + A**（左 Alt） | 用鼠标选中文字后，按住说话提问；松开后 AI 回答在独立窗口弹出 |
 
 ### CLI / 服务
 
@@ -608,7 +862,9 @@ journalctl --user -u voiceime-corrector  -f   # 仅 legacy FireRed + 本地纠�
 | `VOICEIME_LLM_MODE` | `aggressive`（默认）/ `punctuation` / `dictation` |
 | `VOICEIME_LLM_TIMEOUT` | 等待云端纠错的超时（秒） |
 | `VOICEIME_LLM_MAX_WAIT` | 最终提交等待云端纠错的总时间（秒） |
-| `DEEPSEEK_MODEL` | 默认 `deepseek-v4-flash` |
+| `DEEPSEEK_MODEL` | 模型 ID，默认 `deepseek-v4-flash`（部署时设置） |
+| `DEEPSEEK_BASE_URL` / `DEEPSEEK_API_KEY` | AI 纠错的地址和密钥，写在 `.env`（名字带 DeepSeek，但适用于任何服务商） |
+| `VOICEIME_LLM_API` | `anthropic`（默认，`/v1/messages`）或 `openai`（`/chat/completions`） |
 | `VOICEIME_CORRECTOR_ZEN_MODEL` / `_REASONING` | 换模型 / 推理档（low/medium/high/xhigh） |
 | `VOICEIME_RELEASE_GRACE_SEC` | 松键后尾音等待秒数（默认 0.25，封顶 3s，0 立即停） |
 | `VOICEIME_CONTEXT_ENABLED` | 0 = 关闭应用名 / surrounding-text 上下文 |
@@ -776,6 +1032,125 @@ VOICEIME_LLM_MAX_WAIT=3 ./deploy.sh
 
 ---
 
+## 接入 OpenAI 兼容 API
+
+AI 纠错默认走 DeepSeek 的 Anthropic 兼容接口，也可以换成**任何支持 OpenAI Chat Completions
+接口的服务**：OpenAI、DeepSeek（OpenAI 格式）、OpenRouter、硅基流动、阿里云百炼 DashScope，
+或本地的 Ollama / vLLM / LM Studio。
+
+### 1. 在 `.env` 中配置接口
+
+在项目根目录创建或编辑 `.env`：
+
+```bash
+VOICEIME_LLM_API=openai
+DEEPSEEK_BASE_URL=https://api.openai.com/v1
+DEEPSEEK_API_KEY=sk-your-key
+```
+
+```bash
+chmod 600 .env
+```
+
+- 变量沿用历史上的 `DEEPSEEK_` 前缀，但**适用于任何服务商**。
+- `DEEPSEEK_BASE_URL` 填 `/chat/completions` **之前**的部分。VoiceIME 会自己拼上
+  `/chat/completions`，不要重复写。
+- 密钥以 `Authorization: Bearer <key>` 发送。不校验密钥的本地服务也要填一个非空占位值，
+  例如 `DEEPSEEK_API_KEY=local`。
+
+常用 Base URL：
+
+| 服务商 | `DEEPSEEK_BASE_URL` |
+|---|---|
+| OpenAI | `https://api.openai.com/v1` |
+| DeepSeek（OpenAI 格式） | `https://api.deepseek.com/v1` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| 硅基流动 SiliconFlow | `https://api.siliconflow.cn/v1` |
+| 阿里云百炼 DashScope | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| Ollama（本地） | `http://localhost:11434/v1` |
+
+### 2. 部署时选择模型并开启纠错
+
+模型 ID 由 `deploy.sh` 写进 systemd 服务，所以要在部署时指定，**不要**写在 `.env` 里：
+
+```bash
+VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
+```
+
+也可以直接运行 `./deploy.sh`，答 `y`，然后在 `DeepSeek model [...]` 提示处输入模型 ID。
+模型 ID 要和服务商模型列表里的写法完全一致。
+
+部署时会用一条固定测试句调用一次 API。调用失败时部署会中止，正在运行的服务保持原配置。
+检查 URL、密钥和模型后重新运行即可。
+
+### 3. 提示
+
+- 选**快速、非推理**的对话模型。每句话提交前都要等它返回，最多等 `VOICEIME_LLM_MAX_WAIT`
+  秒。模型太慢只会超时，然后直接用本地识别结果。
+- 三种模式（`punctuation` / `aggressive` / `dictation`）、上下文辅助和 `Ctrl + Shift + F9`
+  开关在任何服务商下表现一致。
+- 想换回 DeepSeek 默认接口：删除 `VOICEIME_LLM_API` 这一行（或设为 `anthropic`），把
+  `DEEPSEEK_BASE_URL` 改回 `https://api.deepseek.com/anthropic`，再运行 `./deploy.sh`。
+- 隐私：开启纠错后，当前这句话、你的个人热词，以及（除非设置 `VOICEIME_CONTEXT_ENABLED=0`）
+  光标前后最多 500 个字符会发送给你配置的服务商。
+
+---
+
+## 选中文字提问（Alt+A）
+
+用鼠标**选中一段文字**，**按住左 Alt + A** 说出你的问题，**松开**后 AI 回答会在独立窗口弹出。
+适合「这段什么意思」「帮我翻译」「总结一下」这类针对选中内容的提问。
+
+```text
+鼠标选中文字
+    ↓
+按住左 Alt + A 提问（复用当前麦克风与本地流式识别）
+    ↓
+松开 → 本地识别出问题文字（不写进应用正文）
+    ↓
+选中文字 + 问题 → 已配置的 AI 接口
+    ↓
+独立窗口显示回答（可选中、可复制、Esc 关闭）
+```
+
+### 为什么是左 Alt
+
+右 Alt 是听写键，所以提问用**左 Alt**，两者互不干扰。`VOICEIME_ASK_KEYCODE`
+（默认 38 = `a`）和 `VOICEIME_ASK_MODIFIER_KEYCODE`（默认 64 = 左 Alt）可以覆盖。
+
+### 选中文字是怎么读到的
+
+1. 先读 X11 的 **PRIMARY** 选区，也就是你刚用鼠标高亮的文字。GTK / Qt / 终端
+   都支持，**不碰系统剪贴板**。
+2. 如果该程序不导出 PRIMARY（少数 Electron 应用），回退到模拟 `Ctrl+C`：先保存
+   剪贴板，复制后再还原，尽量不破坏你原来的剪贴板内容。
+
+选区文本不写进应用；提问识别结果也不会插入正文，只用于提问。
+
+### 关于 AI 接口
+
+- 复用「[接入 OpenAI 兼容 API](#接入-openai-兼容-api)」里配置的接口和 `.env` 密钥。
+- 与纠错开关独立：即使关闭了自动纠错（`Ctrl + Shift + F9`），只要配好密钥，提问仍可用。
+- `VOICEIME_LLM_DISABLED=1` 会同时禁止纠错和提问。
+- 回答长度预算用 `VOICEIME_ASK_MAX_TOKENS`（默认 2048）。
+- 隐私：**选中的文字和你说的问题会一起发送**给你配置的服务商。
+
+### 窗口
+
+- 弹出后不抢焦点；等回答好了才聚焦，方便直接复制。
+- 回答可以选中复制，`Ctrl+C` 或「复制回答」按钮都行。
+- `Esc` 或「关闭」隐藏窗口；下次按 Alt + A 复用同一个窗口。
+
+### 限制
+
+- 只能用左 Alt，右 Alt 留给听写。
+- 有些应用既不导出 PRIMARY，又把 `Ctrl+C` 绑定成别的功能（个别终端要用
+  `Ctrl+Shift+C`），这类应用可能读不到选区，此时窗口会提示「没有听清你的问题，请重试」。
+- 密码框里的选中通常无法复制，属预期行为。
+- `VOICEIME_ASK_ENABLED=0` 可整体关闭这个功能。
+
+---
+
 ## 借鉴 Typeless 的输入体验
 
 `VOICEIME_LLM_MODE=dictation` 在云端纠错时整理无意义口头语、重复和明确的口头自我纠正，
@@ -798,19 +1173,64 @@ VOICEIME_LLM_MAX_WAIT=3 ./deploy.sh
 完整词库文件在 `hotwords/`：`aliases.tsv` / `compiled.txt` / `contextual-aliases.tsv` /
 `dental.txt` / `priority.txt` / `programming.txt` / `work-tools.txt`。
 
-### 个人热词
+### 自定义词库
+
+词库分三层，按问题选择：
+
+| 你想要… | 编辑 | 格式 |
+|---|---|---|
+| 教它一个词和正确写法（品牌、项目名、代码标识符） | `~/.config/voiceime/hotwords.txt` | 一行一个词 |
+| 把某个固定的英文误识别全局改对 | `hotwords/aliases.tsv` | `误识别<TAB>正确写法` |
+| 只在特定上下文里才算错的误识别 | `hotwords/contextual-aliases.tsv` | `误识别<TAB>正确写法<TAB>上下文1\|上下文2` |
+
+三层都会在**每次听写开始时**重新加载，不需要重启任何东西。
+
+#### 1. 个人热词（从这里开始）
 
 ```bash
 ./voiceime-hotwords add "MyProject" "Customer Brand" "New Dental Product"
 ./voiceime-hotwords list
 ./voiceime-hotwords remove "MyProject"
+./voiceime-hotwords path      # 打印文件位置
 ```
 
-个人词保存在 `~/.config/voiceime/hotwords.txt`，UTF-8 TXT，一行一个词。可以直接编辑保存，
-下一次录音自动加载，不需要重启。空行和 `#` 开头的注释会被忽略。
+词表保存在 `~/.config/voiceime/hotwords.txt`（UTF-8，一行一个词，空行和 `#` 注释会被忽略），
+也可以直接编辑这个文件。个人热词：
 
-> 本地词库负责英文拼写、大小写和空格规范化；中文专有名词会提供给 DeepSeek 作为纠错
-> 参考，**不能保证声学识别一定正确**。
+- 在**本地**用来修正英文 / ASCII 词的拼写、大小写和空格（例如 `get hub` → `GitHub`）；
+- 开启 AI 纠错时，前 128 个词会作为词汇提示发给纠错模型。中文词只能通过这条路起作用，
+  因为本地词库从不改写中文字符。
+
+适合加专有名词、产品名和标识符。不要加普通英文单词，会让纠错误匹配。
+
+#### 2. 误识别 → 正确写法
+
+识别器总是把某个英文短语听成同一个错误写法时，在 `hotwords/aliases.tsv` 里加一条映射。
+两列之间用**真正的 Tab 字符**分隔：
+
+```tsv
+Henry Shine	Henry Schein
+Dabby Dental	Darby Dental
+```
+
+匹配时忽略大小写、空格和标点，且必须匹配整个短语。只作用于英文 / ASCII 文本。
+
+#### 3. 带上下文保护的替换
+
+有些英文名会被识别成普通中文词（例如 “Linear” → `力量`），全局替换会破坏正常中文。
+`hotwords/contextual-aliases.tsv` 只在附近出现指定上下文词时才替换：
+
+```tsv
+力量	Linear	ticket|issue|sprint|cycle|backlog|workspace
+```
+
+三列依次为：误识别原文（精确匹配）、正确写法、触发词（用 `|` 或 `,` 分隔）。
+只添加你在自己听写中真实遇到过的误识别。
+
+> `hotwords/*.tsv` 和内置的 `*.txt` 词表都在 git 仓库里。修改后请提交到你自己的 fork，
+> 避免 `git pull` 冲突。个人词表 `~/.config/voiceime/hotwords.txt` 在仓库之外，不会冲突。
+
+> 词库是在识别**之后**修正拼写和用词，无法让声学模型听出它根本没识别出的词。
 
 ### DeepSeek 切换
 

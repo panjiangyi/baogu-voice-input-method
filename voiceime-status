@@ -14,6 +14,9 @@ final_enabled="${VOICEIME_FINAL_ENABLED:-1}"
 final_wait="${VOICEIME_FINAL_MAX_WAIT:-1.2}"
 final_audio="${VOICEIME_FINAL_MAX_AUDIO_SEC:-10.0}"
 punctuation_enabled="${VOICEIME_PUNCTUATION_ENABLED:-1}"
+ask_enabled="${VOICEIME_ASK_ENABLED:-1}"
+ask_keycode="${VOICEIME_ASK_KEYCODE:-38}"
+ask_modifier="${VOICEIME_ASK_MODIFIER_KEYCODE:-64}"
 for setting in $service_env; do
   case "$setting" in
     VOICEIME_ENGINE=*) engine="${setting#*=}" ;;
@@ -27,6 +30,9 @@ for setting in $service_env; do
     VOICEIME_FINAL_MAX_WAIT=*) final_wait="${setting#*=}" ;;
     VOICEIME_FINAL_MAX_AUDIO_SEC=*) final_audio="${setting#*=}" ;;
     VOICEIME_PUNCTUATION_ENABLED=*) punctuation_enabled="${setting#*=}" ;;
+    VOICEIME_ASK_ENABLED=*) ask_enabled="${setting#*=}" ;;
+    VOICEIME_ASK_KEYCODE=*) ask_keycode="${setting#*=}" ;;
+    VOICEIME_ASK_MODIFIER_KEYCODE=*) ask_modifier="${setting#*=}" ;;
   esac
 done
 override="${XDG_CONFIG_HOME:-$HOME/.config}/voiceime/deepseek-enabled.txt"
@@ -41,6 +47,7 @@ echo "overlay:   $(systemctl --user is-active voiceime-overlay.service 2>/dev/nu
 echo "engine:    $engine output=$output_mode"
 echo "final:     enabled=$final_enabled max_wait=${final_wait}s max_audio=${final_audio}s punctuation=$punctuation_enabled"
 echo "llm:       enabled=$llm_enabled kill_switch=$llm_disabled mode=$llm_mode timeout=${llm_timeout}s"
+echo "ask:       enabled=$ask_enabled key=$ask_modifier+$ask_keycode (left Alt + A)"
 echo "state:     $(voiceime_state)  (pid ${pid:--})"
 echo "instances: $(voiceime_pids | wc -l)"
 if busctl --user status org.voiceime.Input >/dev/null 2>&1; then

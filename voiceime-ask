@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""VoiceIME selection-question window.
+
+Spawned by voiceime-ptt when the user presses Alt+A with text selected. It
+shows the recognised question and then the AI answer read from the ask state
+file. It is a normal, focusable window so the answer can be selected, copied
+and dismissed with Escape; it does not steal focus until the answer is ready.
+"""
+from __future__ import annotations
+
+import fcntl
+import json
+import os
+import sys
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+
+RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+ASK_STATE = RUNTIME / "voiceime-ask.state"
+LOCK = RUNTIME / "voiceime-ask.lock"
+POLL_MS = 200
+
+
+def single_instance():
+    handle = open(LOCK, "w")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        sys.exit(0)
+    return handle
+
+
+def read_state() -> dict:
+    try:
+        data = json.loads(ASK_STATE.read_text(encoding="utf-8") or "{}")
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+class AskWindow(Gtk.Window):
+    def __init__(self) -> None:
+        super().__init__(title="AI 回答")
+        self.set_default_size(560, 420)
+        self.set_keep_above(True)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
+        self.set_type_hint(Gdk.WindowTypeHint.DIALOG)
+        # Do not steal focus while the user is still speaking.
+        self.set_focus_on_map(False)
+        self.connect("key-press-event", self.on_key)
+        # Hide instead of destroying so a later Alt+A reuses this process.
+        self.connect("delete-event", self.on_delete)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        outer.set_border_width(14)
+        self.add(outer)
+
+        self.question = Gtk.Label()
+        self.question.set_xalign(0.0)
+        self.question.set_line_wrap(True)
+        outer.pack_start(self.question, False, False, 0)
+
+        self.status = Gtk.Label()
+        self.status.set_xalign(0.0)
+        outer.pack_start(self.status, False, False, 0)
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_shadow_type(Gtk.ShadowType.IN)
+        self.view = Gtk.TextView()
+        self.view.set_editable(False)
+        self.view.set_cursor_visible(False)
+        self.view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        self.view.set_left_margin(10)
+        self.view.set_right_margin(10)
+        self.view.set_top_margin(8)
+        self.view.set_bottom_margin(8)
+        scroller.add(self.view)
+        outer.pack_start(scroller, True, True, 0)
+
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons.set_halign(Gtk.Align.END)
+        self.copy_button = Gtk.Button(label="复制回答")
+        self.copy_button.connect("clicked", self.on_copy)
+        self.copy_button.set_sensitive(False)
+        buttons.pack_start(self.copy_button, False, False, 0)
+        close_button = Gtk.Button(label="关闭")
+        close_button.connect("clicked", lambda *_: self.hide_self())
+        buttons.pack_start(close_button, False, False, 0)
+        outer.pack_start(buttons, False, False, 0)
+
+        self.last_key = None
+        self.presented = False
+        GLib.timeout_add(POLL_MS, self.poll)
+
+    def set_text(self, widget, text: str) -> None:
+        widget.set_text(text)
+
+    def hide_self(self) -> bool:
+        self.hide()
+        self.presented = False
+        return False
+
+    def on_delete(self, *_args) -> bool:
+        self.hide_self()
+        return True  # keep the process alive for the next question
+
+    def on_key(self, _widget, event) -> bool:
+        if event.keyval == Gdk.KEY_Escape:
+            self.hide_self()
+            return True
+        return False
+
+    def on_copy(self, _button) -> None:
+        buffer = self.view.get_buffer()
+        text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
+        if text:
+            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(text, -1)
+
+    def place(self) -> None:
+        display = Gdk.Display.get_default()
+        if display is None:
+            return
+        try:
+            seat = display.get_default_seat()
+            _screen, x, y = seat.get_pointer().get_position()
+        except Exception:
+            x, y = 0, 0
+        monitor = display.get_monitor_at_point(x, y)
+        area = monitor.get_workarea()
+        width, height = self.get_size()
+        nx = min(max(area.x, x - width // 2), area.x + area.width - width)
+        ny = min(max(area.y, y + 24), area.y + area.height - height)
+        self.move(nx, ny)
+
+    def poll(self) -> bool:
+        state = read_state()
+        status = str(state.get("status", "listening"))
+        question = str(state.get("question", ""))
+        answer = str(state.get("answer", ""))
+        error = str(state.get("error", ""))
+        session = str(state.get("session", ""))
+
+        if status == "done":
+            status_text = ""
+            body = answer
+        elif status == "error":
+            status_text = error or "提问失败，请重试"
+            body = ""
+        elif status == "thinking":
+            status_text = "AI 正在思考…"
+            body = ""
+        else:
+            status_text = "正在聆听你的问题…（松开 Alt+A 结束）"
+            body = ""
+
+        key = f"{session}:{status}:{question}:{answer}:{error}"
+        if key != self.last_key:
+            self.last_key = key
+            if status in ("listening", "thinking"):
+                # A new question resets the window for the answer that follows.
+                self.presented = False
+            self.set_text(self.question, ("你的问题：" + question) if question else "")
+            self.set_text(self.status, status_text)
+            self.view.get_buffer().set_text(body)
+            self.copy_button.set_sensitive(bool(answer))
+            if not self.get_visible():
+                self.place()
+                self.set_accept_focus(False)
+                self.show_all()
+                self.presented = False
+            if status in ("done", "error") and not self.presented:
+                self.presented = True
+                self.set_accept_focus(True)
+                self.set_focus_on_map(True)
+                self.present()
+        return True
+
+
+def main() -> int:
+    handle = single_instance()
+    window = AskWindow()
+    window.connect("destroy", Gtk.main_quit)
+    Gtk.main()
+    del handle
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

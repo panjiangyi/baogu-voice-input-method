@@ -97,6 +97,8 @@ class Indicator(Gtk.Window):
         status, changed, session = self.correction()
         if engine == "recording":
             wanted = "recording"
+        elif engine == "asking":
+            wanted = "asking"
         elif status == "correcting":
             wanted = "correcting"
         elif engine == "finalizing":
@@ -146,6 +148,7 @@ class Indicator(Gtk.Window):
             return False
 
         labels = {
+            "asking": ("AI 回答中", (0.42, 0.72, 1.0)),
             "finalizing": ("识别优化中", (0.42, 0.72, 1.0)),
             "correcting": ("纠错中", (0.42, 0.72, 1.0)),
             "enabled": ("纠错已开启", (0.35, 0.85, 0.57)),

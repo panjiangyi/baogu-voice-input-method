@@ -43,6 +43,27 @@ class KeyTests(unittest.TestCase):
         self.assertTrue(all("--clearmodifiers" in cmd for cmd in commands))
 
 
+class AskShortcutTests(unittest.TestCase):
+    def test_left_alt_slash_press_and_release(self):
+        shortcut = PTT["AskShortcut"]()
+        self.assertIsNone(shortcut.feed("RawKeyPress", 38))
+        self.assertIsNone(shortcut.feed("RawKeyPress", 64))
+        self.assertIsNone(shortcut.feed("RawKeyRelease", 64))
+        other = PTT["AskShortcut"]()
+        self.assertIsNone(other.feed("RawKeyPress", 64))
+        self.assertEqual(other.feed("RawKeyPress", 38), "press")
+        self.assertEqual(other.feed("RawKeyRelease", 38), "release")
+        self.assertIsNone(other.feed("RawKeyRelease", 64))
+
+    def test_releasing_alt_also_stops_and_repeat_is_ignored(self):
+        shortcut = PTT["AskShortcut"]()
+        shortcut.feed("RawKeyPress", 64)
+        self.assertEqual(shortcut.feed("RawKeyPress", 38), "press")
+        self.assertIsNone(shortcut.feed("RawKeyPress", 38))
+        self.assertEqual(shortcut.feed("RawKeyRelease", 64), "release")
+        self.assertIsNone(shortcut.feed("RawKeyRelease", 64))
+
+
 class StreamingTests(unittest.TestCase):
     def test_fragments_are_aligned_and_output_is_progressive(self):
         chunks = []

@@ -25,6 +25,7 @@
 | 主进程：输入框、选区、可见文本辅助接口；通信层 `audio_context` 与更新消息 | 有上下文获取与传递能力 | 通过 Fcitx 原生桥读取当前会话的有界 surrounding-text；按用户要求默认开启，可显式关闭 |
 | 主进程：`checkEditedText`、原始/当前内容、改动计数和 `auto_add_dictionary` 响应处理 | 存在修改追踪与自动加词反馈机制 | 本轮不自动追踪；先保留现有显式个人词库，避免把普通编辑当纠错 |
 | 原生包：IBus/Fcitx 注册、`commit`、`surrounding`、敏感字段状态 | 多输入框适配，区分敏感输入 | 新上下文接口拒绝密码和敏感标记，限制 session 与焦点 |
+| `refine_selected_text` 事件、`getSelectedText` / 模拟复制读取选区 | 针对选中文字的处理是独立能力 | 新增 `Alt + A` 选中文字提问：读 PRIMARY 选区，语音提问，独立窗口显示回答 |
 
 云端模型名称、提示词、是否针对用户训练模型、线上延迟和服务端数据保留行为均未知。
 不能从客户端出现两类事件，推断服务端一定使用两个独立模型。
@@ -42,6 +43,10 @@
    截断返回完整原文。正常纠错日志改为字符计数，不记录输入、输出内容片段。
 5. 部署脚本支持 `dictation`、上下文开关与等待预算。默认纠错模式不变；后续按用户要求，
    上下文默认开启，`VOICEIME_CONTEXT_ENABLED=0` 可关闭，云端纠错关闭时不发送。
+6. 新增「选中文字提问」：左 Alt + `a` 为提问热键（右 Alt 仍是听写键）；优先读取 X11
+   PRIMARY 选区，不导出 PRIMARY 的应用回退模拟 Ctrl+C 并保存/还原剪贴板。提问复用本地
+   流式识别，**不写入应用正文**；回答经同一 AI 接口返回，显示在独立窗口（`voiceime-ask`）。
+   提问与纠错开关独立，`VOICEIME_LLM_DISABLED=1` 同时禁止两者。
 
 ## 验证边界
 
@@ -50,7 +55,11 @@
 原生 D-Bus 集成验证 Unicode 截取、选区排除、过期 session 和敏感字段排除。
 真人录音与实际应用的上下文可用性仍需日常使用验收。
 
-本轮检查结果：`python3 -m unittest discover -s tests` 共 65 项通过；
-`bash native/build.sh` 编译通过；隔离 `dbus-run-session` 内运行
-`tests/native_bridge.py` 通过；部署脚本 shell 语法和 `git diff --check` 通过。
-本轮仅更新项目及构建产物，未重启桌面服务、启用云端上下文或更改个人词库。
+本轮检查结果：`python3 -m unittest discover -s tests` 共 83 项通过；
+`python3 -m py_compile` 覆盖引擎、PTT、ask 窗口与全部测试；`bash -n` 与
+`bash native/build.sh` 通过；隔离 `dbus-run-session` 内运行 `tests/native_bridge.py`
+通过；`git diff --check` 通过。
+选中文字提问的单元测试覆盖 PRIMARY 优先、Ctrl+C 回退与剪贴板还原、热键状态机、
+请求文件的一次性消费、状态文件的原子写入、以及 ask 回答请求结构；真实选区、
+不同应用到 PRIMARY/Ctrl+C 的实际可用性、以及回答质量仍需日常使用验收。
+本轮仅更新项目及构建产物，未重启桌面服务、未触发真实 AI 提问、未更改个人词库。

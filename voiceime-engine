@@ -57,6 +57,10 @@ LOCK = RUNTIME / "voiceime-engine.lock"
 STATE_FILE = RUNTIME / "voiceime-engine.state"
 READY_FILE = RUNTIME / "voiceime-engine.ready"
 CORRECTION_FILE = RUNTIME / "voiceime-correction.state"
+# Selection question ("ask") flow. The PTT daemon writes the request with the
+# mouse-selected text before signalling a start; the engine answers it here.
+ASK_REQUEST_FILE = RUNTIME / "voiceime-ask.request"
+ASK_STATE_FILE = RUNTIME / "voiceime-ask.state"
 
 terminate = False
 # Monotonic request numbers preserve a release that arrives while the previous
@@ -110,6 +114,37 @@ def set_correction_state(session: str, status: str) -> None:
             json.dumps({"session": session, "status": status, "time": time.time()}),
             encoding="utf-8",
         )
+    except OSError:
+        pass
+
+
+def take_ask_request() -> dict | None:
+    """Consume the pending selection-question request, if any."""
+    try:
+        raw = ASK_REQUEST_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        ASK_REQUEST_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def write_ask_state(session: str, status: str, **fields) -> None:
+    """Publish ask progress atomically so the window never reads a torn file."""
+    payload = {"session": session, "status": status, "time": time.time()}
+    payload.update(fields)
+    try:
+        temporary = ASK_STATE_FILE.with_name(ASK_STATE_FILE.name + ".tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+        )
+        temporary.replace(ASK_STATE_FILE)
     except OSError:
         pass
 
@@ -496,6 +531,13 @@ class LLMCorrector:
         "数字、日期、人名、否定词、代码和 URL 没有明确口头纠正时必须保留。"
         "只输出整理后的文字，不解释，不加引号。"
     )
+    ASK_PROMPT = (
+        "你是阅读与写作助手。用户选中了一段文字，并用语音向你提了一个问题。\n"
+        "请基于选中的文字回答用户的问题：可以解释、翻译、总结、改写或按用户要求作答。\n"
+        "使用与用户问题相同的语言，回答准确、直接、结构清晰。\n"
+        "如果问题与选中文字无关，就直接回答用户的问题。\n"
+        "不要复述这些指令，不要输出多余的前后缀，只输出回答正文。"
+    )
 
     def __init__(self) -> None:
         load_project_env()
@@ -504,11 +546,18 @@ class LLMCorrector:
         ).rstrip("/")
         self.api_key = os.environ.get("DEEPSEEK_API_KEY", "")
         self.model = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
+        # Wire protocol of DEEPSEEK_BASE_URL: "anthropic" (POST /v1/messages,
+        # DeepSeek's default) or "openai" (POST /chat/completions on any
+        # OpenAI-compatible endpoint; the base URL usually ends in /v1).
+        self.api = os.environ.get("VOICEIME_LLM_API", "anthropic").strip().lower()
         self.timeout = float(os.environ.get("VOICEIME_LLM_TIMEOUT", os.environ.get("DEEPSEEK_TIMEOUT", "10")))
         self.enabled = os.environ.get("VOICEIME_LLM_ENABLED", "1") == "1"
         self.mode = os.environ.get("VOICEIME_LLM_MODE", "punctuation").lower()
         self.last_status = "disabled"
         self._available = bool(self.api_key and self.base_url)
+        if self.api not in ("anthropic", "openai"):
+            log(f"unknown VOICEIME_LLM_API={self.api!r}; expected anthropic or openai")
+            self._available = False
         if not getattr(self, "enabled", True):
             log("LLM corrector disabled")
             return
@@ -517,7 +566,7 @@ class LLMCorrector:
             log("DeepSeek corrector unavailable: check project .env")
             return
         self.last_status = "ready"
-        log(f"DeepSeek corrector ready model={self.model}")
+        log(f"LLM corrector ready api={self.api} model={self.model}")
 
     @staticmethod
     def _is_cjk(ch: str) -> bool:
@@ -631,53 +680,17 @@ class LLMCorrector:
                                "before": str(context.get("before", ""))[-500:],
                                "after": str(context.get("after", ""))[:500]}
         log(f"LLM call: mode={self.mode} model={self.model} base_chars={len(text)}")
-        body = json.dumps({
-            "model": self.model,
-            "system": prompt,
-            "messages": [{
-                "role": "user",
-                "content": json.dumps(data, ensure_ascii=False),
-            }],
-            "max_tokens": min(8192, max(512, len(text) * 3 + 128)),
-            "temperature": 0.0,
-            "thinking": {"type": "disabled"},
-        }).encode("utf-8")
-        req = urllib.request.Request(
-            f"{self.base_url}/v1/messages",
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": self.api_key,
-                "anthropic-version": "2023-06-01",
-            },
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                payload = json.loads(resp.read())
-            if payload.get("stop_reason") == "max_tokens":
-                self.last_status = "rejected"
-                log("LLM response truncated; keeping complete ASR text")
-                return text
-            content = "".join(
-                item.get("text", "")
-                for item in payload["content"]
-                if item.get("type") == "text"
-            ).strip()
-            log(f"LLM response: chars={len(content)}")
-        except (TimeoutError,) as ex:
-            self.last_status = "timeout"
-            log(f"LLM correction timed out: {ex!r}")
+        user_content = json.dumps(data, ensure_ascii=False)
+        max_tokens = min(8192, max(512, len(text) * 3 + 128))
+        content, truncated, ok = self._post(prompt, user_content, max_tokens)
+        if not ok:
+            # _post already recorded timeout/failed on self.last_status.
             return text
-        except urllib.error.URLError as ex:
-            self.last_status = (
-                "timeout" if isinstance(ex.reason, TimeoutError) else "failed"
-            )
-            log(f"LLM correction failed: {ex!r}")
+        if truncated:
+            self.last_status = "rejected"
+            log("LLM response truncated; keeping complete ASR text")
             return text
-        except (OSError, ValueError, KeyError, IndexError, TypeError) as ex:
-            self.last_status = "failed"
-            log(f"LLM correction failed: {ex!r}")
-            return text
+        log(f"LLM response: chars={len(content)}")
         if not content:
             self.last_status = "failed"
             log("LLM correction failed: empty content from API")
@@ -689,6 +702,113 @@ class LLMCorrector:
             return text
         self.last_status = "success"
         log(f"LLM accepted: {len(text)}->{len(content)} chars (mode={self.mode})")
+        return content
+
+    def _post(self, system: str, user_content: str, max_tokens: int):
+        """Send one chat request. Returns (text, truncated, ok).
+
+        On a transport or parse failure ok is False and self.last_status holds
+        "timeout" or "failed". The caller decides what to do with the text.
+        """
+        api = getattr(self, "api", "anthropic")
+        if api == "openai":
+            url = f"{self.base_url}/chat/completions"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            }
+            request_body = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_content},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.0,
+            }
+        else:
+            url = f"{self.base_url}/v1/messages"
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+            }
+            request_body = {
+                "model": self.model,
+                "system": system,
+                "messages": [{"role": "user", "content": user_content}],
+                "max_tokens": max_tokens,
+                "temperature": 0.0,
+                "thinking": {"type": "disabled"},
+            }
+        req = urllib.request.Request(
+            url, data=json.dumps(request_body).encode("utf-8"), headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                payload = json.loads(resp.read())
+        except (TimeoutError,) as ex:
+            self.last_status = "timeout"
+            log(f"LLM request timed out: {ex!r}")
+            return "", False, False
+        except urllib.error.URLError as ex:
+            self.last_status = (
+                "timeout" if isinstance(ex.reason, TimeoutError) else "failed"
+            )
+            log(f"LLM request failed: {ex!r}")
+            return "", False, False
+        except (OSError, ValueError) as ex:
+            self.last_status = "failed"
+            log(f"LLM request failed: {ex!r}")
+            return "", False, False
+        try:
+            if api == "openai":
+                choice = payload["choices"][0]
+                truncated = choice.get("finish_reason") == "length"
+                content = (choice["message"].get("content") or "").strip()
+            else:
+                truncated = payload.get("stop_reason") == "max_tokens"
+                content = "".join(
+                    item.get("text", "")
+                    for item in payload["content"]
+                    if item.get("type") == "text"
+                ).strip()
+        except (KeyError, IndexError, TypeError, AttributeError) as ex:
+            self.last_status = "failed"
+            log(f"LLM response malformed: {ex!r}")
+            return "", False, False
+        return content, truncated, True
+
+    def answer(self, question: str, selection: str) -> str:
+        """Answer the user's spoken question about the selected text."""
+        if os.environ.get("VOICEIME_LLM_DISABLED", "0") == "1":
+            self.last_status = "disabled"
+            return ""
+        if not self._available:
+            self.last_status = "unavailable"
+            log("ask skipped: LLM endpoint not configured")
+            return ""
+        question = (question or "").strip()
+        if not question:
+            self.last_status = "empty"
+            return ""
+        selection = (selection or "").strip()
+        data = {"question": question, "selected_text": selection}
+        max_tokens = max(256, int(os.environ.get("VOICEIME_ASK_MAX_TOKENS", "2048")))
+        log(f"LLM ask: model={self.model} question_chars={len(question)} "
+            f"selection_chars={len(selection)}")
+        content, truncated, ok = self._post(
+            self.ASK_PROMPT, json.dumps(data, ensure_ascii=False), max_tokens
+        )
+        if not ok or not content:
+            if ok:
+                self.last_status = "failed"
+                log("ask returned empty content")
+            return ""
+        self.last_status = "success"
+        log(f"LLM ask response: chars={len(content)}")
+        if truncated:
+            return content + "\n\n（回答可能因长度被截断）"
         return content
 
 
@@ -1226,6 +1346,125 @@ def run_utterance(
         log(f"utterance captured chars={len(base_text)}")
 
 
+def ask_error_message(llm: "LLMCorrector") -> str:
+    status = getattr(llm, "last_status", "failed")
+    if status == "unavailable":
+        return "未配置 AI 接口：请在项目 .env 中设置 DEEPSEEK_API_KEY"
+    if status == "disabled":
+        return "AI 调用被关闭（VOICEIME_LLM_DISABLED=1）"
+    if status == "timeout":
+        return "AI 响应超时，请重试"
+    return "AI 没有返回结果，请重试"
+
+
+def run_ask_utterance(
+    asr: SherpaRecognizer,
+    llm: LLMCorrector,
+    request: dict,
+    request_id: int,
+) -> None:
+    """Record the spoken question about the selected text and answer it.
+
+    Unlike the dictation path this never touches Fcitx: the question must not be
+    inserted into the focused document. The answer is published to the ask state
+    file that voiceime-ask renders.
+    """
+    global current_session
+    session = secrets.token_hex(12)
+    current_session = session
+    max_selection = max(0, int(os.environ.get("VOICEIME_ASK_MAX_SELECTION", "8000")))
+    selection = str(request.get("selection", ""))[:max_selection]
+    write_ask_state(session, "listening", question="")
+
+    stream = asr.create_stream()
+    recorder = start_recorder(resolve_mic())
+    assert recorder.stdout is not None
+    poller = select.poll()
+    poller.register(
+        recorder.stdout.fileno(), select.POLLIN | select.POLLHUP | select.POLLERR
+    )
+    started = time.monotonic()
+    all_audio = bytearray()
+    set_state("recording")
+    log(f"ask recording session={session[:8]} selection_chars={len(selection)}")
+    release_tail = ReleaseTailDetector()
+    last_text = ""
+    last_write = 0.0
+    try:
+        while not terminate:
+            if stop_request >= request_id:
+                if release_tail.released_at is None:
+                    release_tail.release(time.monotonic())
+                    set_state("asking")
+                    log(f"ask release: adaptive tail max={RELEASE_GRACE_SEC:.2f}s "
+                        f"silence={RELEASE_SILENCE_SEC:.2f}s "
+                        f"threshold={release_tail.threshold:.0f}")
+                if start_request > request_id or release_tail.finished(time.monotonic()):
+                    break
+            if time.monotonic() - started > MAX_UTTERANCE_SEC:
+                log("ask utterance safety timeout")
+                break
+            events = poller.poll(CHUNK_MS)
+            if events:
+                try:
+                    data = os.read(recorder.stdout.fileno(), 65536)
+                except BlockingIOError:
+                    data = b""
+                if data:
+                    release_tail.feed(data, time.monotonic())
+                    all_audio.extend(data)
+                    asr.accept_pcm(stream, data)
+                    asr.decode_ready(stream)
+                    text = asr.text(stream)
+                    if text and text != last_text:
+                        last_text = text
+                        now = time.monotonic()
+                        if now - last_write >= 0.25:
+                            last_write = now
+                            write_ask_state(session, "listening", question=text)
+            if recorder.poll() is not None:
+                log("ask recorder exited unexpectedly")
+                break
+    finally:
+        set_state("asking")
+        tail = stop_recorder(recorder)
+        if tail:
+            all_audio.extend(tail)
+            asr.accept_pcm(stream, tail)
+
+    if terminate:
+        set_state("suspended")
+        return
+
+    question = ""
+    try:
+        question = asr.finalize(stream).strip()
+    except Exception as ex:
+        log(f"ask streaming finalize failed; keeping last partial: {ex!r}")
+    question = (question or last_text).strip()
+    if not question:
+        write_ask_state(session, "error", question="", error="没有听清你的问题，请重试")
+        set_state("suspended")
+        return
+
+    write_ask_state(session, "thinking", question=question)
+    try:
+        answer = llm.answer(question, selection)
+    except Exception as ex:
+        log(f"ask failed: {ex!r}")
+        llm.last_status = "failed"
+        answer = ""
+    if answer:
+        write_ask_state(session, "done", question=question, answer=answer)
+        log(f"ask session={session[:8]} answered chars={len(answer)}")
+    else:
+        write_ask_state(
+            session, "error", question=question, error=ask_error_message(llm)
+        )
+        log(f"ask session={session[:8]} failed status={getattr(llm, 'last_status', '?')}")
+    set_state("suspended")
+
+
 def main() -> int:
     _lock = single_instance()
     signal.signal(signal.SIGUSR1, on_finish)
@@ -1237,6 +1476,7 @@ def main() -> int:
         READY_FILE.unlink(missing_ok=True)
         STATE_FILE.unlink(missing_ok=True)
         CORRECTION_FILE.unlink(missing_ok=True)
+        ASK_REQUEST_FILE.unlink(missing_ok=True)
     except OSError:
         pass
 
@@ -1260,12 +1500,16 @@ def main() -> int:
             if terminate:
                 break
             handled_request += 1
+            ask_request = take_ask_request()
             try:
-                glossary = GlossaryCorrector()
-                run_utterance(
-                    asr, final_asr, llm, glossary, punctuation,
-                    bridge, executor, handled_request
-                )
+                if ask_request is not None:
+                    run_ask_utterance(asr, llm, ask_request, handled_request)
+                else:
+                    glossary = GlossaryCorrector()
+                    run_utterance(
+                        asr, final_asr, llm, glossary, punctuation,
+                        bridge, executor, handled_request
+                    )
             except Exception as ex:
                 set_state("suspended")
                 log(f"utterance failed: {ex!r}")
@@ -1274,6 +1518,7 @@ def main() -> int:
             READY_FILE.unlink(missing_ok=True)
             STATE_FILE.unlink(missing_ok=True)
             CORRECTION_FILE.unlink(missing_ok=True)
+            ASK_REQUEST_FILE.unlink(missing_ok=True)
         except OSError:
             pass
         executor.shutdown(wait=False, cancel_futures=True)

@@ -34,6 +34,8 @@ class StubServer:
     def __init__(self, responses):
         self.responses = list(responses)
         self.requests = []
+        self.paths = []
+        self.headers = []
         self._server = None
         self._thread = None
         self.port = _free_port()
@@ -55,11 +57,13 @@ class StubServer:
                 self.send_response(404); self.end_headers()
 
             def do_POST(self):
-                if self.path != "/v1/messages":
+                if self.path not in ("/v1/messages", "/v1/chat/completions"):
                     self.send_response(404); self.end_headers(); return
                 length = int(self.headers.get("Content-Length", "0"))
                 body = self.rfile.read(length)
                 outer.requests.append(json.loads(body))
+                outer.paths.append(self.path)
+                outer.headers.append(dict(self.headers))
                 if not outer.responses:
                     self.send_response(500); self.end_headers(); return
                 resp = outer.responses.pop(0)
@@ -104,6 +108,41 @@ def _with_env(values: dict):
 
 
 class LLMCorrectorTests(unittest.TestCase):
+    def test_openai_compatible_api_uses_chat_completions(self):
+        reply = {"choices": [{"finish_reason": "stop",
+                              "message": {"role": "assistant", "content": "检查 GitHub Actions。"}}]}
+        with StubServer([reply]) as srv, _with_env({
+            "VOICEIME_LLM_ENABLED": "1",
+            "VOICEIME_LLM_DISABLED": "0",
+            "VOICEIME_LLM_MODE": "aggressive",
+            "VOICEIME_LLM_API": "openai",
+            "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}/v1",
+            "VOICEIME_LLM_TIMEOUT": "2",
+        }):
+            c = Corrector()
+            self.assertEqual(c.correct("检查 get up actions"), "检查 GitHub Actions。")
+            self.assertEqual(c.last_status, "success")
+        self.assertEqual(srv.paths, ["/v1/chat/completions"])
+        self.assertEqual(srv.headers[0].get("Authorization"), "Bearer test-key")
+        body = srv.requests[0]
+        self.assertEqual([m["role"] for m in body["messages"]], ["system", "user"])
+        self.assertNotIn("thinking", body)
+
+    def test_openai_compatible_truncation_keeps_asr_text(self):
+        reply = {"choices": [{"finish_reason": "length",
+                              "message": {"role": "assistant", "content": "检查"}}]}
+        with StubServer([reply]) as srv, _with_env({
+            "VOICEIME_LLM_ENABLED": "1",
+            "VOICEIME_LLM_DISABLED": "0",
+            "VOICEIME_LLM_MODE": "aggressive",
+            "VOICEIME_LLM_API": "openai",
+            "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}/v1",
+            "VOICEIME_LLM_TIMEOUT": "2",
+        }):
+            c = Corrector()
+            self.assertEqual(c.correct("检查 get up actions"), "检查 get up actions")
+            self.assertEqual(c.last_status, "rejected")
+
     def test_preedit_final_really_calls_deepseek_and_returns_corrected_words(self):
         from concurrent.futures import ThreadPoolExecutor
         from types import SimpleNamespace
@@ -197,6 +236,36 @@ class LLMCorrectorTests(unittest.TestCase):
                 self.assertEqual(c.correct(original), original)
             self.assertEqual(c.last_status, "rejected")
             self.assertGreater(srv.requests[0]["max_tokens"], 256)
+
+    def test_answer_returns_reply_and_sends_selection(self):
+        with StubServer([{"content": [{"type": "text", "text": "这句话的意思是：部署已经完成。"}]}]) as srv:
+            with _with_env({"VOICEIME_LLM_ENABLED": "1",
+                            "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
+                c = Corrector()
+                result = c.answer("这句话什么意思", "部署已经完成")
+        self.assertEqual(result, "这句话的意思是：部署已经完成。")
+        request = srv.requests[0]
+        data = json.loads(request["messages"][0]["content"])
+        self.assertEqual(data["question"], "这句话什么意思")
+        self.assertEqual(data["selected_text"], "部署已经完成")
+        self.assertIn("选中", request["system"])
+        self.assertEqual(c.last_status, "success")
+
+    def test_answer_marks_truncated_output(self):
+        with StubServer([{"stop_reason": "max_tokens",
+                          "content": [{"type": "text", "text": "部分回答"}]}]) as srv:
+            with _with_env({"VOICEIME_LLM_ENABLED": "1",
+                            "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
+                c = Corrector()
+                result = c.answer("问", "选中的文字")
+        self.assertTrue(result.startswith("部分回答"))
+        self.assertIn("截断", result)
+
+    def test_answer_without_credentials_returns_empty(self):
+        with _with_env({"DEEPSEEK_API_KEY": ""}):
+            c = Corrector()
+            self.assertEqual(c.answer("问题", "文字"), "")
+            self.assertEqual(c.last_status, "unavailable")
 
     def test_timeout_has_distinct_status(self):
         c = Corrector.__new__(Corrector)

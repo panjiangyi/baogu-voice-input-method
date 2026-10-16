@@ -20,6 +20,9 @@ PUNCTUATION_ENABLED="${VOICEIME_PUNCTUATION_ENABLED:-1}"
 RELEASE_GRACE="${VOICEIME_RELEASE_GRACE_SEC:-3.0}"
 CONTEXT_ENABLED="${VOICEIME_CONTEXT_ENABLED:-1}"
 LLM_MAX_WAIT="${VOICEIME_LLM_MAX_WAIT:-$LLM_TIMEOUT}"
+ASK_ENABLED="${VOICEIME_ASK_ENABLED:-1}"
+ASK_KEYCODE="${VOICEIME_ASK_KEYCODE:-38}"
+ASK_MODIFIER="${VOICEIME_ASK_MODIFIER_KEYCODE:-64}"
 
 cat > "$UNIT_DIR/voiceime-ptt.service" <<EOF
 [Unit]
@@ -52,6 +55,9 @@ Environment=VOICEIME_LLM_MODE=$LLM_MODE
 Environment=VOICEIME_LLM_TIMEOUT=$LLM_TIMEOUT
 Environment=VOICEIME_LLM_MAX_WAIT=$LLM_MAX_WAIT
 Environment=VOICEIME_CONTEXT_ENABLED=$CONTEXT_ENABLED
+Environment=VOICEIME_ASK_ENABLED=$ASK_ENABLED
+Environment=VOICEIME_ASK_KEYCODE=$ASK_KEYCODE
+Environment=VOICEIME_ASK_MODIFIER_KEYCODE=$ASK_MODIFIER
 Environment=DEEPSEEK_MODEL=$DEEPSEEK_MODEL
 
 [Install]
@@ -78,7 +84,7 @@ Environment=DISPLAY=${DISPLAY:-:1}
 WantedBy=default.target
 EOF
 
-chmod +x "$ROOT/voiceime-engine" "$ROOT/voiceime-ptt" "$ROOT/voiceime-reset" "$ROOT/voiceime-mic" "$ROOT/voiceime-overlay" "$ROOT/voiceime-hotwords" "$ROOT/scripts/wait-for-x11.sh"
+chmod +x "$ROOT/voiceime-engine" "$ROOT/voiceime-ptt" "$ROOT/voiceime-reset" "$ROOT/voiceime-mic" "$ROOT/voiceime-overlay" "$ROOT/voiceime-ask" "$ROOT/voiceime-hotwords" "$ROOT/scripts/wait-for-x11.sh"
 systemctl --user daemon-reload
 systemctl --user enable voiceime-ptt.service
 systemctl --user enable voiceime-overlay.service
