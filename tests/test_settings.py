@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 from unittest.mock import patch
-from voiceime_settings import CorrectionShortcut, llm_enabled, toggle_llm
+from baogu_settings import CorrectionShortcut, llm_enabled, toggle_llm
 
 
 class SettingsTests(unittest.TestCase):
@@ -30,9 +30,9 @@ class SettingsTests(unittest.TestCase):
 
     def test_personal_terms_override_compiled_and_reload(self):
         from pathlib import Path
-        from voiceime_glossary import GlossaryCorrector
+        from baogu_glossary import GlossaryCorrector
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"XDG_CONFIG_HOME": directory}):
-            path = Path(directory) / "voiceime" / "hotwords.txt"
+            path = Path(directory) / "baogu" / "hotwords.txt"
             path.parent.mkdir()
             path.write_text("MySpecialProject\n", encoding="utf-8")
             self.assertEqual(GlossaryCorrector().correct("my special project"), "MySpecialProject")

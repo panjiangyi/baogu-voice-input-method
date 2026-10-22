@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import time
 
-PROBE_PREFIX = "__voiceime_selection_probe__"
+PROBE_PREFIX = "__baogu_selection_probe__"
 
 
 def _executable(path: str | None) -> str | None:
@@ -61,9 +61,21 @@ def _write_clipboard(xclip: str, text: str, timeout: float = 0.6) -> bool:
     return done.returncode == 0
 
 
+def capture_clipboard(timeout: float = 0.6) -> str:
+    """Return the CLIPBOARD selection, or "" when it holds nothing readable.
+
+    Callers use this when the user pressed a shortcut without saying anything:
+    the text they want explained is whatever they last copied.
+    """
+    xclip = find_tool("xclip", "BAOGU_XCLIP")
+    if not xclip:
+        return ""
+    return _read_clipboard(xclip, "clipboard", timeout=timeout) or ""
+
+
 def capture_selection(*, primary_only: bool = False, timeout: float = 0.4) -> str:
     """Return the currently selected text, or "" when nothing is selected."""
-    xclip = find_tool("xclip", "VOICEIME_XCLIP")
+    xclip = find_tool("xclip", "BAOGU_XCLIP")
     if not xclip:
         return ""
 
@@ -73,7 +85,7 @@ def capture_selection(*, primary_only: bool = False, timeout: float = 0.4) -> st
     if primary_only:
         return ""
 
-    xdotool = find_tool("xdotool", "VOICEIME_XDOTOOL")
+    xdotool = find_tool("xdotool", "BAOGU_XDOTOOL")
     if not xdotool:
         return ""
 

@@ -6,7 +6,7 @@ import wave
 
 import vosk
 
-MODEL_DIR = "/mnt/data/james/Documents/sidework/laopan-voice-input-method/models/vosk-model-small-cn-0.22"
+MODEL_DIR = "/mnt/data/james/Documents/sidework/baogu-voice-input-method/models/vosk-model-small-cn-0.22"
 
 
 def recognize(wav_path: str) -> str:

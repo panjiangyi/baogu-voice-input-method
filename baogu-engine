@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VoiceIME streaming ASR engine.
+"""Baogu IME streaming ASR engine.
 
 Realtime path:
   SIGUSR2 -> start recording immediately
@@ -30,37 +30,37 @@ from pathlib import Path
 
 import numpy as np
 
-from voiceime_glossary import GlossaryCorrector, _read_terms, personal_glossary_path
-from voiceime_settings import llm_enabled
+from baogu_glossary import GlossaryCorrector, _read_terms, personal_glossary_path
+from baogu_settings import llm_enabled
 
 ROOT = Path(__file__).resolve().parent
 RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
 MODEL_DIR = Path(os.environ.get(
-    "VOICEIME_SHERPA_MODEL",
+    "BAOGU_SHERPA_MODEL",
     ROOT / "models" / "sherpa-onnx-streaming-paraformer-bilingual-zh-en",
 ))
 SAMPLE_RATE = 16000
-CHUNK_MS = int(os.environ.get("VOICEIME_CHUNK_MS", "80"))
-PARTIAL_MIN_INTERVAL = float(os.environ.get("VOICEIME_PARTIAL_MIN_INTERVAL", "0.08"))
-MAX_UTTERANCE_SEC = float(os.environ.get("VOICEIME_MAX_UTTERANCE_SEC", "90"))
-FINAL_PADDING_SEC = float(os.environ.get("VOICEIME_FINAL_PADDING_SEC", "1.0"))
+CHUNK_MS = int(os.environ.get("BAOGU_CHUNK_MS", "80"))
+PARTIAL_MIN_INTERVAL = float(os.environ.get("BAOGU_PARTIAL_MIN_INTERVAL", "0.08"))
+MAX_UTTERANCE_SEC = float(os.environ.get("BAOGU_MAX_UTTERANCE_SEC", "90"))
+FINAL_PADDING_SEC = float(os.environ.get("BAOGU_FINAL_PADDING_SEC", "1.0"))
 # A release tail ends as soon as the microphone becomes quiet.
 RELEASE_GRACE_SEC = max(0.0, min(10.0, float(os.environ.get(
-    "VOICEIME_RELEASE_GRACE_SEC", "3.0"
+    "BAOGU_RELEASE_GRACE_SEC", "3.0"
 ))))
 RELEASE_SILENCE_SEC = 0.25
-OUTPUT_MODE = os.environ.get("VOICEIME_OUTPUT_MODE", "preedit").strip().lower()
-FINAL_MAX_WAIT_SEC = float(os.environ.get("VOICEIME_FINAL_MAX_WAIT", "1.2"))
-FINAL_MAX_AUDIO_SEC = float(os.environ.get("VOICEIME_FINAL_MAX_AUDIO_SEC", "10.0"))
-MIC_SCRIPT = ROOT / "voiceime-mic"
-LOCK = RUNTIME / "voiceime-engine.lock"
-STATE_FILE = RUNTIME / "voiceime-engine.state"
-READY_FILE = RUNTIME / "voiceime-engine.ready"
-CORRECTION_FILE = RUNTIME / "voiceime-correction.state"
+OUTPUT_MODE = os.environ.get("BAOGU_OUTPUT_MODE", "preedit").strip().lower()
+FINAL_MAX_WAIT_SEC = float(os.environ.get("BAOGU_FINAL_MAX_WAIT", "1.2"))
+FINAL_MAX_AUDIO_SEC = float(os.environ.get("BAOGU_FINAL_MAX_AUDIO_SEC", "10.0"))
+MIC_SCRIPT = ROOT / "baogu-mic"
+LOCK = RUNTIME / "baogu-engine.lock"
+STATE_FILE = RUNTIME / "baogu-engine.state"
+READY_FILE = RUNTIME / "baogu-engine.ready"
+CORRECTION_FILE = RUNTIME / "baogu-correction.state"
 # Selection question ("ask") flow. The PTT daemon writes the request with the
 # mouse-selected text before signalling a start; the engine answers it here.
-ASK_REQUEST_FILE = RUNTIME / "voiceime-ask.request"
-ASK_STATE_FILE = RUNTIME / "voiceime-ask.state"
+ASK_REQUEST_FILE = RUNTIME / "baogu-ask.request"
+ASK_STATE_FILE = RUNTIME / "baogu-ask.state"
 
 terminate = False
 # Monotonic request numbers preserve a release that arrives while the previous
@@ -97,7 +97,7 @@ def load_project_env() -> None:
 
 
 def log(msg: str) -> None:
-    sys.stderr.write(f"[voiceime-engine] {msg}\n")
+    sys.stderr.write(f"[baogu-engine] {msg}\n")
     sys.stderr.flush()
 
 
@@ -166,9 +166,9 @@ class FcitxBridge:
     def _gio_call(self, method: str, params):
         Gio, GLib = self._gio
         reply = self._bus.call_sync(
-            "org.voiceime.Input",
-            "/org/voiceime/Input",
-            "org.voiceime.Input1",
+            "org.baogu.Input",
+            "/org/baogu/Input",
+            "org.baogu.Input1",
             method,
             params,
             GLib.VariantType("(b)"),
@@ -187,8 +187,8 @@ class FcitxBridge:
         out = subprocess.run(
             [
                 "busctl", "--user", "--timeout=1", "call",
-                "org.voiceime.Input", "/org/voiceime/Input",
-                "org.voiceime.Input1", "BeginSession", "s", session,
+                "org.baogu.Input", "/org/baogu/Input",
+                "org.baogu.Input1", "BeginSession", "s", session,
             ],
             capture_output=True, text=True, timeout=1.5,
         )
@@ -200,8 +200,8 @@ class FcitxBridge:
             if self._bus is not None and self._gio is not None:
                 Gio, GLib = self._gio
                 reply = self._bus.call_sync(
-                    "org.voiceime.Input", "/org/voiceime/Input",
-                    "org.voiceime.Input1", "ContextSession",
+                    "org.baogu.Input", "/org/baogu/Input",
+                    "org.baogu.Input1", "ContextSession",
                     GLib.Variant("(s)", (session,)), GLib.VariantType("(sss)"),
                     Gio.DBusCallFlags.NONE, 250, None,
                 )
@@ -209,8 +209,8 @@ class FcitxBridge:
             else:
                 reply = subprocess.run(
                     ["busctl", "--user", "--timeout=0.25", "call",
-                     "org.voiceime.Input", "/org/voiceime/Input",
-                     "org.voiceime.Input1", "ContextSession", "s", session],
+                     "org.baogu.Input", "/org/baogu/Input",
+                     "org.baogu.Input1", "ContextSession", "s", session],
                     capture_output=True, text=True, timeout=0.4,
                 )
                 values = shlex.split(reply.stdout)
@@ -231,8 +231,8 @@ class FcitxBridge:
         out = subprocess.run(
             [
                 "busctl", "--user", "--timeout=1", "call",
-                "org.voiceime.Input", "/org/voiceime/Input",
-                "org.voiceime.Input1", "UpdateSession", "sis",
+                "org.baogu.Input", "/org/baogu/Input",
+                "org.baogu.Input1", "UpdateSession", "sis",
                 session, str(remove), text,
             ],
             capture_output=True, text=True, timeout=1.5,
@@ -250,8 +250,8 @@ class FcitxBridge:
         out = subprocess.run(
             [
                 "busctl", "--user", "--timeout=1", "call",
-                "org.voiceime.Input", "/org/voiceime/Input",
-                "org.voiceime.Input1", "FinishSession", "ss",
+                "org.baogu.Input", "/org/baogu/Input",
+                "org.baogu.Input1", "FinishSession", "ss",
                 session, text,
             ],
             capture_output=True, text=True, timeout=1.5,
@@ -267,8 +267,8 @@ class FcitxBridge:
         out = subprocess.run(
             [
                 "busctl", "--user", "--timeout=1", "call",
-                "org.voiceime.Input", "/org/voiceime/Input",
-                "org.voiceime.Input1", "PreviewSession", "ss", session, text,
+                "org.baogu.Input", "/org/baogu/Input",
+                "org.baogu.Input1", "PreviewSession", "ss", session, text,
             ],
             capture_output=True, text=True, timeout=1.5,
         )
@@ -283,8 +283,8 @@ class FcitxBridge:
         out = subprocess.run(
             [
                 "busctl", "--user", "--timeout=1", "call",
-                "org.voiceime.Input", "/org/voiceime/Input",
-                "org.voiceime.Input1", "CommitSession", "ss", session, text,
+                "org.baogu.Input", "/org/baogu/Input",
+                "org.baogu.Input1", "CommitSession", "ss", session, text,
             ],
             capture_output=True, text=True, timeout=1.5,
         )
@@ -299,8 +299,8 @@ class FcitxBridge:
         out = subprocess.run(
             [
                 "busctl", "--user", "--timeout=1", "call",
-                "org.voiceime.Input", "/org/voiceime/Input",
-                "org.voiceime.Input1", "CancelSession", "s", session,
+                "org.baogu.Input", "/org/baogu/Input",
+                "org.baogu.Input1", "CancelSession", "s", session,
             ],
             capture_output=True, text=True, timeout=1.5,
         )
@@ -368,22 +368,22 @@ class FinalRecognizer:
 
     def __init__(self) -> None:
         self.recognizer = None
-        self.enabled = os.environ.get("VOICEIME_FINAL_ENABLED", "1").lower() in {
+        self.enabled = os.environ.get("BAOGU_FINAL_ENABLED", "1").lower() in {
             "1", "true", "yes", "on"
         }
         if not self.enabled:
             log("final ASR disabled")
             return
 
-        self.backend = os.environ.get("VOICEIME_FINAL_BACKEND", "paraformer").lower()
+        self.backend = os.environ.get("BAOGU_FINAL_BACKEND", "paraformer").lower()
         if self.backend == "qwen3":
             self._load_qwen3()
             return
         if self.backend != "paraformer":
-            raise ValueError(f"Unknown VOICEIME_FINAL_BACKEND: {self.backend}")
+            raise ValueError(f"Unknown BAOGU_FINAL_BACKEND: {self.backend}")
 
         model_dir = Path(os.environ.get(
-            "VOICEIME_FINAL_MODEL",
+            "BAOGU_FINAL_MODEL",
             ROOT / "models" / "sherpa-onnx-paraformer-zh-2024-03-09",
         ))
         model = model_dir / "model.int8.onnx"
@@ -405,7 +405,7 @@ class FinalRecognizer:
 
     def _load_qwen3(self) -> None:
         model_dir = Path(os.environ.get(
-            "VOICEIME_FINAL_MODEL",
+            "BAOGU_FINAL_MODEL",
             ROOT / "models" / "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
         ))
         required = ("conv_frontend.onnx", "encoder.int8.onnx", "decoder.int8.onnx",
@@ -415,7 +415,7 @@ class FinalRecognizer:
             return
         try:
             import sherpa_onnx
-            from voiceime_glossary import load_terms
+            from baogu_glossary import load_terms
             # Keep prompt bounded; user vocabulary takes precedence. Huge
             # dictionaries consume decoder context and dilute useful hints.
             terms = load_terms()
@@ -461,12 +461,12 @@ class PunctuationRestorer:
     def __init__(self) -> None:
         self.restorer = None
         self.enabled = os.environ.get(
-            "VOICEIME_PUNCTUATION_ENABLED", "1"
+            "BAOGU_PUNCTUATION_ENABLED", "1"
         ).lower() in {"1", "true", "yes", "on"}
         if not self.enabled:
             return
         model_dir = Path(os.environ.get(
-            "VOICEIME_PUNCTUATION_MODEL",
+            "BAOGU_PUNCTUATION_MODEL",
             ROOT / "models"
             / "sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8",
         ))
@@ -521,15 +521,27 @@ class LLMCorrector:
     REWRITE_PROMPT = (
         "你是语音输入纠错器。修正明显的识别错误、英文拼写、技术词大小写、"
         "标点和中英文空格，同时严格保留原意、数字、代码符号和变量名。"
+        "脏话和粗俗表达是原话的一部分，必须逐字保留，禁止净化或删除。"
         "不要扩写、总结或回答原文。只输出纠错后的最终文本，不要解释，不要加引号。"
     )
     DICTATION_PROMPT = (
         "你是口述文字整理器。将口语整理成可直接发送的文字：删除无意义的嗯、呃、"
         "重复和说到一半放弃的片段；明确的自我纠正以最后确认的说法为准；"
         "修正明显识别错误并添加标点。保留说话者语气、信息和段落意图。"
+        "脏话和粗俗表达是说话者的原话与语气，必须逐字保留，"
+        "禁止净化、弱化、删除或用委婉说法替换。"
         "不要擅自正式化、扩写、总结、补充事实或回答问题。"
         "数字、日期、人名、否定词、代码和 URL 没有明确口头纠正时必须保留。"
         "只输出整理后的文字，不解释，不加引号。"
+    )
+    POLISH_JUDGE_PROMPT = (
+        "你是口述转写质量评审。给你两版文本：A 是语音识别的原始转写，"
+        "B 是经过润色的版本。判断哪一版更忠实于说话者真正说出的话：\n"
+        "- 保留原意、语气和说话者强调的重点（包括脏话和粗口）；\n"
+        "- 没有丢掉数字、人名、否定词或代码符号；\n"
+        "- 没有添加原文没有的意思，没有把口语强行书面化。\n"
+        "润色允许删除无意义的嗯、呃并添加标点；除此之外的改动都要严格审视。\n"
+        "只回答一个字母：B 更好回答 B，否则回答 A。不要解释。"
     )
     ASK_PROMPT = (
         "你是阅读与写作助手。用户选中了一段文字，并用语音向你提了一个问题。\n"
@@ -549,14 +561,14 @@ class LLMCorrector:
         # Wire protocol of DEEPSEEK_BASE_URL: "anthropic" (POST /v1/messages,
         # DeepSeek's default) or "openai" (POST /chat/completions on any
         # OpenAI-compatible endpoint; the base URL usually ends in /v1).
-        self.api = os.environ.get("VOICEIME_LLM_API", "anthropic").strip().lower()
-        self.timeout = float(os.environ.get("VOICEIME_LLM_TIMEOUT", os.environ.get("DEEPSEEK_TIMEOUT", "10")))
-        self.enabled = os.environ.get("VOICEIME_LLM_ENABLED", "1") == "1"
-        self.mode = os.environ.get("VOICEIME_LLM_MODE", "punctuation").lower()
+        self.api = os.environ.get("BAOGU_LLM_API", "anthropic").strip().lower()
+        self.timeout = float(os.environ.get("BAOGU_LLM_TIMEOUT", os.environ.get("DEEPSEEK_TIMEOUT", "10")))
+        self.enabled = os.environ.get("BAOGU_LLM_ENABLED", "1") == "1"
+        self.mode = os.environ.get("BAOGU_LLM_MODE", "punctuation").lower()
         self.last_status = "disabled"
         self._available = bool(self.api_key and self.base_url)
         if self.api not in ("anthropic", "openai"):
-            log(f"unknown VOICEIME_LLM_API={self.api!r}; expected anthropic or openai")
+            log(f"unknown BAOGU_LLM_API={self.api!r}; expected anthropic or openai")
             self._available = False
         if not getattr(self, "enabled", True):
             log("LLM corrector disabled")
@@ -655,9 +667,9 @@ class LLMCorrector:
         # Retained as an explicit operator kill switch. Normal deployments no
         # longer need it because live text is held as an Fcitx preedit and the
         # corrected sentence is committed atomically by FinishSession.
-        if os.environ.get("VOICEIME_LLM_DISABLED", "0") == "1":
+        if os.environ.get("BAOGU_LLM_DISABLED", "0") == "1":
             self.last_status = "disabled"
-            log("LLM corrector force-disabled (VOICEIME_LLM_DISABLED=1); "
+            log("LLM corrector force-disabled (BAOGU_LLM_DISABLED=1); "
                 "returning ASR text as-is")
             return text
         if not self._available:
@@ -695,6 +707,17 @@ class LLMCorrector:
             self.last_status = "failed"
             log("LLM correction failed: empty content from API")
             return text
+        if content != text and self.mode == "dictation":
+            # Polish often makes the sentence worse, so a second judge call
+            # compares the polished candidate against the raw ASR text and
+            # keeps the original whenever the polish did not clearly win.
+            verdict = self._judge(text, content)
+            if verdict != "B":
+                self.last_status = "kept-original"
+                log(f"LLM polish rejected by judge (verdict={verdict}); "
+                    f"keeping ASR text: base_chars={len(text)} "
+                    f"candidate_chars={len(content)}")
+                return text
         if not self._accept_candidate(text, content):
             self.last_status = "rejected"
             log(f"LLM candidate rejected by semantic guard (mode={self.mode}); "
@@ -703,6 +726,33 @@ class LLMCorrector:
         self.last_status = "success"
         log(f"LLM accepted: {len(text)}->{len(content)} chars (mode={self.mode})")
         return content
+
+    def _judge(self, original: str, candidate: str) -> str:
+        """Compare a polish candidate against the raw ASR text.
+
+        Returns "B" when the polished version wins and "A" when the original
+        should be kept. Any transport failure, empty or ambiguous reply is
+        treated as "A": the raw ASR text is the safer default.
+        """
+        data = {"A": original, "B": candidate}
+        try:
+            content, truncated, ok = self._post(
+                self.POLISH_JUDGE_PROMPT,
+                json.dumps(data, ensure_ascii=False),
+                max_tokens=8,
+            )
+        except Exception as ex:
+            log(f"polish judge request failed; keeping ASR text: {ex!r}")
+            return "A"
+        if not ok or truncated or not content:
+            log("polish judge produced no verdict; keeping ASR text")
+            return "A"
+        verdict = content.strip().upper()[:1]
+        if verdict not in ("A", "B"):
+            log(f"polish judge returned ambiguous reply {content.strip()[:20]!r}; "
+                "keeping ASR text")
+            return "A"
+        return verdict
 
     def _post(self, system: str, user_content: str, max_tokens: int):
         """Send one chat request. Returns (text, truncated, ok).
@@ -781,7 +831,7 @@ class LLMCorrector:
 
     def answer(self, question: str, selection: str) -> str:
         """Answer the user's spoken question about the selected text."""
-        if os.environ.get("VOICEIME_LLM_DISABLED", "0") == "1":
+        if os.environ.get("BAOGU_LLM_DISABLED", "0") == "1":
             self.last_status = "disabled"
             return ""
         if not self._available:
@@ -794,7 +844,7 @@ class LLMCorrector:
             return ""
         selection = (selection or "").strip()
         data = {"question": question, "selected_text": selection}
-        max_tokens = max(256, int(os.environ.get("VOICEIME_ASK_MAX_TOKENS", "2048")))
+        max_tokens = max(256, int(os.environ.get("BAOGU_ASK_MAX_TOKENS", "2048")))
         log(f"LLM ask: model={self.model} question_chars={len(question)} "
             f"selection_chars={len(selection)}")
         content, truncated, ok = self._post(
@@ -1008,6 +1058,10 @@ def refine_async(
         )
         if outcome == "timeout":
             set_correction_state(session, "timeout")
+        elif outcome == "kept-original":
+            # The polish lost the comparison; nothing failed, the raw ASR text
+            # is what gets committed.
+            set_correction_state(session, "kept-original")
         elif outcome != "success":
             set_correction_state(session, "failed")
         elif final == base_text:
@@ -1054,9 +1108,9 @@ def _bounded_llm_text(session, request_id, text, llm, context=None):
             return text, "busy"
         llm_inflight = None
     if llm_executor is None:
-        llm_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="voiceime-llm")
+        llm_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="baogu-llm")
     wait_sec = max(0.0, float(os.environ.get(
-        "VOICEIME_LLM_MAX_WAIT", str(getattr(llm, "timeout", 10.0))
+        "BAOGU_LLM_MAX_WAIT", str(getattr(llm, "timeout", 10.0))
     )))
     if wait_sec == 0:
         return text, "timeout"
@@ -1161,7 +1215,8 @@ def _best_final_text(
             return candidate
         set_correction_state(session, "correcting")
         candidate, outcome = _bounded_llm_text(session, request_id, candidate, llm, context)
-        set_correction_state(session, outcome if outcome in {"success", "timeout"} else "failed")
+        set_correction_state(session, outcome if outcome in {
+            "success", "timeout", "kept-original"} else "failed")
         log(f"preedit DeepSeek correction finished: status={outcome}")
     return candidate or streaming_text
 
@@ -1242,7 +1297,7 @@ def run_utterance(
     # Open the microphone first so even a slow context lookup cannot swallow
     # the first spoken word. Capture before emitting this utterance's preedit.
     context = None
-    if os.environ.get("VOICEIME_CONTEXT_ENABLED", "1") == "1":
+    if os.environ.get("BAOGU_CONTEXT_ENABLED", "1") == "1":
         context = bridge.context(session)
     release_tail = ReleaseTailDetector()
     target_valid = True
@@ -1351,10 +1406,17 @@ def ask_error_message(llm: "LLMCorrector") -> str:
     if status == "unavailable":
         return "未配置 AI 接口：请在项目 .env 中设置 DEEPSEEK_API_KEY"
     if status == "disabled":
-        return "AI 调用被关闭（VOICEIME_LLM_DISABLED=1）"
+        return "AI 调用被关闭（BAOGU_LLM_DISABLED=1）"
     if status == "timeout":
         return "AI 响应超时，请重试"
     return "AI 没有返回结果，请重试"
+
+
+ASK_EXPLAIN_QUESTION = (
+    "请解释这段内容：如果是英文单词或句子，解释它的含义和用法；"
+    "如果是其他内容，解释它在说什么。"
+)
+ASK_EXPLAIN_LABEL = "解释选区 / 剪贴板内容"
 
 
 def run_ask_utterance(
@@ -1367,13 +1429,18 @@ def run_ask_utterance(
 
     Unlike the dictation path this never touches Fcitx: the question must not be
     inserted into the focused document. The answer is published to the ask state
-    file that voiceime-ask renders.
+    file that baogu-ask renders.
+
+    A press with no speech at all is not an error: the user only wanted the
+    selected or clipboard text explained, so that text becomes the subject and
+    a fixed explain question is asked about it.
     """
     global current_session
     session = secrets.token_hex(12)
     current_session = session
-    max_selection = max(0, int(os.environ.get("VOICEIME_ASK_MAX_SELECTION", "8000")))
+    max_selection = max(0, int(os.environ.get("BAOGU_ASK_MAX_SELECTION", "8000")))
     selection = str(request.get("selection", ""))[:max_selection]
+    clipboard = str(request.get("clipboard", ""))[:max_selection]
     write_ask_state(session, "listening", question="")
 
     stream = asr.create_stream()
@@ -1442,12 +1509,28 @@ def run_ask_utterance(
     except Exception as ex:
         log(f"ask streaming finalize failed; keeping last partial: {ex!r}")
     question = (question or last_text).strip()
+    display_question = question
     if not question:
-        write_ask_state(session, "error", question="", error="没有听清你的问题，请重试")
-        set_state("suspended")
-        return
+        # Silent press: the user pressed Alt+A because they did not understand
+        # something, so explain that text instead of asking them to repeat.
+        subject = selection.strip()
+        source = "selection"
+        if not subject:
+            subject = clipboard.strip()
+            source = "clipboard"
+        if not subject:
+            write_ask_state(
+                session, "error", question="",
+                error="没有听清问题，选区和剪贴板也没有内容",
+            )
+            set_state("suspended")
+            return
+        question = ASK_EXPLAIN_QUESTION
+        display_question = ASK_EXPLAIN_LABEL
+        selection = subject
+        log(f"ask silent press: explaining {len(subject)} chars from {source}")
 
-    write_ask_state(session, "thinking", question=question)
+    write_ask_state(session, "thinking", question=display_question)
     try:
         answer = llm.answer(question, selection)
     except Exception as ex:
@@ -1455,11 +1538,12 @@ def run_ask_utterance(
         llm.last_status = "failed"
         answer = ""
     if answer:
-        write_ask_state(session, "done", question=question, answer=answer)
+        write_ask_state(session, "done", question=display_question, answer=answer)
         log(f"ask session={session[:8]} answered chars={len(answer)}")
     else:
         write_ask_state(
-            session, "error", question=question, error=ask_error_message(llm)
+            session, "error", question=display_question,
+            error=ask_error_message(llm),
         )
         log(f"ask session={session[:8]} failed status={getattr(llm, 'last_status', '?')}")
     set_state("suspended")
@@ -1486,7 +1570,7 @@ def main() -> int:
     llm = LLMCorrector()
     glossary = GlossaryCorrector()
     punctuation = PunctuationRestorer()
-    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="voiceime-final")
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="baogu-final")
 
     READY_FILE.write_text(str(os.getpid()) + "\n", encoding="utf-8")
     set_state("suspended")

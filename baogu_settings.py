@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def llm_state_path():
-    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "voiceime" / "deepseek-enabled.txt"
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "baogu" / "deepseek-enabled.txt"
 
 
 def llm_enabled(default=True):

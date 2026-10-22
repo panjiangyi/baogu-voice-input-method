@@ -1,4 +1,4 @@
-"""Run inside an isolated dbus-run-session with the VoiceIME addon loaded."""
+"""Run inside an isolated dbus-run-session with the Baogu IME addon loaded."""
 import time
 import gi
 from gi.repository import Gio, GLib
@@ -19,7 +19,7 @@ interface = "org.fcitx.Fcitx.InputContext1"
 path, uuid = call(
     name, "/org/freedesktop/portal/inputmethod",
     "org.fcitx.Fcitx.InputMethod1", "CreateInputContext",
-    GLib.Variant("(a(ss))", ([("program", "voiceime-test")],)),
+    GLib.Variant("(a(ss))", ([("program", "baogu-test")],)),
 )
 bus.signal_subscribe(
     name, interface, None, path, None, Gio.DBusSignalFlags.NONE,
@@ -43,8 +43,8 @@ call(name, path, interface, "FocusIn")
 
 def bridge(method, args=None):
     return call(
-        "org.voiceime.Input", "/org/voiceime/Input",
-        "org.voiceime.Input1", method, args
+        "org.baogu.Input", "/org/baogu/Input",
+        "org.baogu.Input1", method, args
     )
 
 
@@ -52,7 +52,7 @@ assert bridge(
     "BeginSession", GLib.Variant("(s)", ("session-1",))
 ) == (True,)
 assert bridge("ContextSession", GLib.Variant("(s)", ("session-1",))) == (
-    "voiceime-test", "已有文字", "")
+    "baogu-test", "已有文字", "")
 assert bridge("ContextSession", GLib.Variant("(s)", ("stale",))) == ("", "", "")
 start = time.monotonic()
 assert bridge(
@@ -175,7 +175,7 @@ call(name, path, interface, "SetSurroundingText",
      GLib.Variant("(suu)", ("前" * 700 + "选中" + "后" * 700, 700, 702)))
 assert bridge("BeginSession", GLib.Variant("(s)", ("context",))) == (True,)
 assert bridge("ContextSession", GLib.Variant("(s)", ("context",))) == (
-    "voiceime-test", "前" * 500, "后" * 500)
+    "baogu-test", "前" * 500, "后" * 500)
 for flag in (1 << 3, 1 << 36):
     call(name, path, interface, "SetCapability",
          GLib.Variant("(t)", ((1 << 1) | (1 << 6) | flag,)))

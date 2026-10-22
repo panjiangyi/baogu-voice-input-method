@@ -1,11 +1,11 @@
-"""Tests for deterministic VoiceIME domain-glossary correction."""
+"""Tests for deterministic Baogu IME domain-glossary correction."""
 from pathlib import Path
 import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from voiceime_glossary import GlossaryCorrector  # noqa: E402
+from baogu_glossary import GlossaryCorrector  # noqa: E402
 
 
 class GlossaryCorrectorTests(unittest.TestCase):
@@ -19,7 +19,7 @@ class GlossaryCorrectorTests(unittest.TestCase):
             "FinalRecognizer",
             "endpoint triggered",
             "user_id",
-            "VOICEIME_ENABLE_LLM",
+            "BAOGU_ENABLE_LLM",
             "ONNX",
             "Stripe",
             "Linear",

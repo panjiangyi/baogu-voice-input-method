@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Manage a session-scoped WebRTC echo-cancel source and playback sink."""
+import fcntl
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+SOURCE = 'baogu_echo_source'
+SINK = 'baogu_echo_sink'
+# Shells launched outside the desktop may not inherit its runtime directory.
+os.environ.setdefault('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')
+STATE = Path(os.environ['XDG_RUNTIME_DIR']) / 'baogu-aec.json'
+
+
+def pactl(*args):
+    return subprocess.check_output(['pactl', *args], text=True, stderr=subprocess.PIPE, timeout=8).strip()
+
+
+def listing(kind):
+    return json.loads(pactl('-f', 'json', 'list', kind))
+
+
+def move_streams(origin, destination):
+    sinks = {str(s['index']): s['name'] for s in listing('sinks')}
+    for stream in listing('sink-inputs'):
+        # Never route the filter's own speaker output back into its input.
+        if stream.get('properties', {}).get('node.name') == 'echo-cancel-playback':
+            continue
+        if sinks.get(str(stream['sink'])) == origin:
+            # Streams can close between listing and moving.
+            try:
+                pactl('move-sink-input', str(stream['index']), destination)
+            except subprocess.CalledProcessError:
+                pass
+
+
+def disable(state):
+    # Respect output/input changes made by the user after enabling AEC.
+    if pactl('get-default-sink') == SINK:
+        pactl('set-default-sink', state['sink'])
+    if pactl('get-default-source') == SOURCE:
+        pactl('set-default-source', state['source'])
+    move_streams(SINK, state['sink'])
+    # Some pactl versions omit module indices in JSON output.
+    modules = [line.split('\t') for line in pactl('list', 'short', 'modules').splitlines()]
+    if any(len(m) >= 3 and m[0] == state['module'] and m[1] == 'module-echo-cancel'
+           and f'source_name={SOURCE}' in m[2] for m in modules):
+        pactl('unload-module', state['module'])
+    STATE.unlink(missing_ok=True)
+
+
+def main():
+    action = sys.argv[1] if len(sys.argv) == 2 else 'status'
+    if action not in ('on', 'off', 'status'):
+        raise ValueError('usage: baogu-aec [on|off|status]')
+    state = json.loads(STATE.read_text()) if STATE.exists() else None
+    active = any(s['name'] == SOURCE for s in listing('sources'))
+    if action == 'status':
+        print('aec: enabled' if active else 'aec: disabled')
+        if active and pactl('get-default-sink') != SINK:
+            print('warning: playback bypasses echo cancellation; run baogu-aec off then on')
+        return
+    if action == 'off':
+        if state:
+            disable(state)
+        elif active:
+            raise ValueError('AEC source exists without ownership state; refusing to unload it')
+        print('Echo cancellation disabled.')
+        return
+    if active:
+        if not state:
+            raise ValueError('AEC source already exists without ownership state')
+        pactl('set-default-sink', SINK)
+        pactl('set-default-source', SOURCE)
+        move_streams(state['sink'], SINK)
+        print('Echo cancellation already enabled.')
+        return
+    # Resolve the same physical microphone used by the input method.
+    source = subprocess.check_output([str(Path(__file__).resolve().with_name('baogu-mic'))], text=True, timeout=3).strip()
+    sink = pactl('get-default-sink')
+    if not source or source == SOURCE or sink == SINK:
+        raise ValueError('No valid physical microphone/output available; disable stale AEC first')
+    previous_source = pactl('get-default-source')
+    module = pactl('load-module', 'module-echo-cancel', 'aec_method=webrtc',
+                   f'source_master={source}', f'sink_master={sink}',
+                   f'source_name={SOURCE}', f'sink_name={SINK}')
+    state = {'module': module, 'source': previous_source, 'sink': sink}
+    # Save recovery information before changing routing.
+    try:
+        STATE.write_text(json.dumps(state))
+        for _ in range(30):
+            if any(s['name'] == SOURCE for s in listing('sources')) and any(s['name'] == SINK for s in listing('sinks')):
+                break
+            time.sleep(.1)
+        else:
+            raise ValueError('Echo cancellation devices did not appear')
+        pactl('set-default-sink', SINK)
+        pactl('set-default-source', SOURCE)
+        move_streams(sink, SINK)
+    except Exception:
+        disable(state)
+        raise
+    print('Echo cancellation enabled. Existing playback routed through WebRTC AEC.')
+    print('Release and press the dictation hotkey again to use the filtered microphone.')
+
+
+if __name__ == '__main__':
+    try:
+        with (STATE.parent / 'baogu-aec.lock').open('w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            main()
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        detail = getattr(exc, 'stderr', '') or str(exc)
+        print(f'baogu-aec: {detail.strip()}', file=sys.stderr)
+        sys.exit(1)

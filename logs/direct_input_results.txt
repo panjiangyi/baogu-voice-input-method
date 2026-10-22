@@ -1,4 +1,4 @@
-# VoiceIME POC 直接输入验证记录
+# Baogu IME POC 直接输入验证记录
 # 说明: 以下为自动化回环验证(扬声器→麦克风)的真实结果; 真人语音测试请运行 scripts/00-user-test.sh
 
 [1] xdotool 中文注入真实应用: PASS

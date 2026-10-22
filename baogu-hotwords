@@ -3,21 +3,21 @@ set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "$0")" && pwd)"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
-PERSONAL="$CONFIG_HOME/voiceime/hotwords.txt"
+PERSONAL="$CONFIG_HOME/baogu/hotwords.txt"
 COMPILED="$ROOT/hotwords/compiled.txt"
 
 usage() {
   cat <<'EOF'
 Usage:
-  voiceime-hotwords list
-  voiceime-hotwords add <word or phrase> [...]
-  voiceime-hotwords remove <word or phrase>
-  voiceime-hotwords rebuild
-  voiceime-hotwords path
+  baogu-hotwords list
+  baogu-hotwords add <word or phrase> [...]
+  baogu-hotwords remove <word or phrase>
+  baogu-hotwords rebuild
+  baogu-hotwords path
 
 Examples:
-  ./voiceime-hotwords add "Henry Schein" "Stripe Checkout" "MyProject"
-  ./voiceime-hotwords remove "MyProject"
+  ./baogu-hotwords add "Henry Schein" "Stripe Checkout" "MyProject"
+  ./baogu-hotwords remove "MyProject"
 EOF
 }
 
@@ -30,9 +30,16 @@ rebuild() {
   python3 "$ROOT/scripts/20-build-glossary.py" -o "$COMPILED"
   count="$(grep -cv '^[[:space:]]*\(#\|$\)' "$COMPILED" 2>/dev/null || true)"
   echo "compiled $count hotwords -> $COMPILED"
-  if systemctl --user is-active voiceime-ptt.service >/dev/null 2>&1; then
-    systemctl --user restart voiceime-ptt.service
-    echo "restarted voiceime-ptt.service"
+  # baogu-ptt calls this from inside its own event loop (Left Alt + W).
+  # Restarting the service from there would kill the caller mid-request; the
+  # engine reloads changed glossary files on its own instead.
+  if [ "${BAOGU_HOTWORDS_NO_RESTART:-0}" = "1" ]; then
+    echo "skipped service restart (BAOGU_HOTWORDS_NO_RESTART=1)"
+    return 0
+  fi
+  if systemctl --user is-active baogu-ptt.service >/dev/null 2>&1; then
+    systemctl --user restart baogu-ptt.service
+    echo "restarted baogu-ptt.service"
   fi
 }
 
@@ -51,7 +58,9 @@ case "$cmd" in
     [ "$#" -gt 0 ] || { usage >&2; exit 2; }
     ensure_personal
     for term in "$@"; do
-      term="$(printf '%s' "$term" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      # One term per line: a pasted multi-line selection must not break the
+      # file format (or inject stray comment lines).
+      term="$(printf '%s' "$term" | tr '\n\r' '  ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
       [ -n "$term" ] || continue
       if ! awk -v q="$term" 'BEGIN{IGNORECASE=1; found=0} $0==q{found=1} END{exit found?0:1}' "$PERSONAL"; then
         printf '%s\n' "$term" >> "$PERSONAL"

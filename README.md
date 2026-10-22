@@ -2,7 +2,7 @@
 
 **English** · [中文版 / Chinese version ↓](#chinese-version)
 
-# VoiceIME — Ubuntu Chinese & Mixed Chinese/English Voice Input
+# Baogu IME (苞谷输入法) — Ubuntu Chinese & Mixed Chinese/English Voice Input
 
 > **PR #6 recommended architecture**: Sherpa bilingual streaming Paraformer real-time preedit →
 > offline Paraformer large fast final → deterministic glossary correction →
@@ -54,8 +54,8 @@ Targets **Ubuntu 24.04 + GNOME + Fcitx5**; the PTT hotkey listener currently foc
 ### 2. Clone and deploy
 
 ```bash
-git clone https://github.com/panjiangyi/laopan-voice-input-method.git
-cd laopan-voice-input-method
+git clone https://github.com/panjiangyi/baogu-voice-input-method.git
+cd baogu-voice-input-method
 ./deploy.sh
 ```
 
@@ -64,7 +64,7 @@ cd laopan-voice-input-method
 1. installs any missing apt packages and the `sherpa-onnx` Python runtime;
 2. downloads the speech models into `models/` (first run only);
 3. builds and installs the Fcitx5 addon, then restarts Fcitx5;
-4. installs and starts the `voiceime-ptt` and `voiceime-overlay` user services.
+4. installs and starts the `baogu-ptt` and `baogu-overlay` user services.
 
 During the run it asks **"Enable DeepSeek correction after each utterance? [y/N]"**. Answer
 `N` for a fully local setup. You can turn AI correction on later; see
@@ -77,7 +77,7 @@ If deploy prints `WARNING: final quality models are incomplete`, run
 ### 3. Verify and dictate
 
 ```bash
-./voiceime-status        # "state: suspended" means idle and ready
+./baogu-status        # "state: suspended" means idle and ready
 ```
 
 Click into any text field, **hold right Alt**, speak, and **release**. Text appears live
@@ -103,38 +103,42 @@ Deploy is idempotent: anything already installed or downloaded is skipped.
 | Ctrl + Alt + V | Hands-free toggle: press once to start, again to stop |
 | Ctrl + Alt + B | End current dictation and commit |
 | Ctrl + Shift + F9 | Toggle DeepSeek auto-correction (state is persisted) |
-| **Hold Alt + A** (left Alt) | Ask a spoken question about the mouse-selected text; the AI answer opens in its own window |
+| **Hold Alt + A** (left Alt) | Ask a spoken question about the mouse-selected text; the AI answer opens in its own window. Say nothing and it explains the selection (or clipboard) instead |
+| **Alt + W** (left Alt) | Add the selected text (else the clipboard) to your personal hotword list, with a desktop confirmation |
 
 ### CLI / Service
 
 ```bash
-./voiceime-status         # Daemon / dictation status / current microphone
-./voiceime-reset          # Force-clean engine and recorder on abnormal state
-./voiceime-hotwords ...   # Personal hotword add / list / remove
+./baogu-status         # Daemon / dictation status / current microphone
+./baogu-reset          # Force-clean engine and recorder on abnormal state
+./baogu-hotwords ...   # Personal hotword add / list / remove
 
-journalctl --user -u voiceime-ptt        -f   # PTT daemon
-journalctl --user -u voiceime-engine     -f   # Default DeepSeek-path engine log
-journalctl --user -u voiceime-corrector  -f   # Legacy FireRed + local corrector only
+journalctl --user -u baogu-ptt        -f   # PTT daemon
+journalctl --user -u baogu-engine     -f   # Default DeepSeek-path engine log
+journalctl --user -u baogu-corrector  -f   # Legacy FireRed + local corrector only
 ```
 
 ### Key Environment Variables
 
 | Variable | Purpose |
 |---|---|
-| `VOICEIME_LLM_ENABLED` | 1 = enable DeepSeek post-processing; 0 = disabled |
-| `VOICEIME_LLM_MODE` | `aggressive` (default) / `punctuation` / `dictation` |
-| `VOICEIME_LLM_TIMEOUT` | Cloud-correction request timeout (seconds) |
-| `VOICEIME_LLM_MAX_WAIT` | Total time final commit waits for cloud correction (seconds) |
+| `BAOGU_LLM_ENABLED` | 1 = enable DeepSeek post-processing; 0 = disabled |
+| `BAOGU_LLM_MODE` | `aggressive` (default) / `punctuation` / `dictation` |
+| `BAOGU_LLM_TIMEOUT` | Cloud-correction request timeout (seconds) |
+| `BAOGU_LLM_MAX_WAIT` | Total time final commit waits for cloud correction (seconds) |
 | `DEEPSEEK_MODEL` | Model ID; default `deepseek-v4-flash` (set at deploy time) |
 | `DEEPSEEK_BASE_URL` / `DEEPSEEK_API_KEY` | AI correction endpoint and key, in `.env` (any provider, despite the name) |
-| `VOICEIME_LLM_API` | `anthropic` (default, `/v1/messages`) or `openai` (`/chat/completions`) |
-| `VOICEIME_CORRECTOR_ZEN_MODEL` / `_REASONING` | Switch model / reasoning tier (low/medium/high/xhigh) |
-| `VOICEIME_RELEASE_GRACE_SEC` | Trailing-sound wait after key release (default 0.25, capped at 3s, 0 = stop immediately) |
-| `VOICEIME_CONTEXT_ENABLED` | 0 = disable app name / surrounding-text context |
-| `VOICEIME_PTT_KEYCODE` | Override PTT physical keycode (default right Alt = 108) |
-| `VOICEIME_ASK_ENABLED` | 1 (default) = enable selection question with Alt + A |
-| `VOICEIME_ASK_KEYCODE` / `VOICEIME_ASK_MODIFIER_KEYCODE` | Ask hotkey keycodes (default 38 = `a`, 64 = left Alt) |
-| `VOICEIME_ASK_MAX_TOKENS` | Answer length budget for the selection question (default 2048) |
+| `BAOGU_LLM_API` | `anthropic` (default, `/v1/messages`) or `openai` (`/chat/completions`) |
+| `BAOGU_CORRECTOR_ZEN_MODEL` / `_REASONING` | Switch model / reasoning tier (low/medium/high/xhigh) |
+| `BAOGU_RELEASE_GRACE_SEC` | Trailing-sound wait after key release (default 0.25, capped at 3s, 0 = stop immediately) |
+| `BAOGU_CONTEXT_ENABLED` | 0 = disable app name / surrounding-text context |
+| `BAOGU_PTT_KEYCODE` | Override PTT physical keycode (default right Alt = 108) |
+| `BAOGU_ASK_ENABLED` | 1 (default) = enable selection question with Alt + A |
+| `BAOGU_ASK_KEYCODE` / `BAOGU_ASK_MODIFIER_KEYCODE` | Ask hotkey keycodes (default 38 = `a`, 64 = left Alt) |
+| `BAOGU_ASK_MAX_TOKENS` | Answer length budget for the selection question (default 2048) |
+| `BAOGU_HOTWORD_ENABLED` | 1 (default) = enable the one-key hotword teach with Alt + W |
+| `BAOGU_HOTWORD_KEYCODE` / `BAOGU_HOTWORD_MODIFIER_KEYCODE` | Hotword hotkey keycodes (default 25 = `w`, 64 = left Alt; keycodes come from the X keymap, which may not match the PC105 reference — check with `xmodmap -pke`) |
+| `BAOGU_HOTWORD_MAX_CHARS` | Longest selection accepted as one hotword (default 80) |
 
 Secrets are read only from the project root `.env` (mode 600).
 
@@ -183,19 +187,19 @@ echo 'DEEPSEEK_API_KEY=...'      >  .env
 echo 'DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic' >> .env
 echo 'DEEPSEEK_MODEL=deepseek-v4-flash'                    >> .env
 chmod 600 .env
-# Choose y during deploy, or set VOICEIME_LLM_ENABLED=1
+# Choose y during deploy, or set BAOGU_LLM_ENABLED=1
 
 # 4. Install and start user-level systemd services
 bash scripts/10-install-service.sh
 
 # 5. Check
-./voiceime-status
+./baogu-status
 ```
 
-> **`voiceime-engine` calls DeepSeek's Anthropic-compatible API directly, with thinking
+> **`baogu-engine` calls DeepSeek's Anthropic-compatible API directly, with thinking
 > explicitly disabled**; no OpenCode, cc-switch, or local corrector service is required. The
-> legacy path (FireRedASR2 + local corrector service) is only used when `VOICEIME_OUTPUT_MODE`
-> is set to something other than `preedit` AND `VOICEIME_LLM_ENABLED=1`.
+> legacy path (FireRedASR2 + local corrector service) is only used when `BAOGU_OUTPUT_MODE`
+> is set to something other than `preedit` AND `BAOGU_LLM_ENABLED=1`.
 
 ---
 
@@ -209,7 +213,7 @@ bash scripts/10-install-service.sh
    - The recording waveform closes immediately and shows "识别优化中" / "Optimizing".
    - If the audio is still close to recent speech volume, trailing audio is captured; the
      recorder stops after about 0.25s of continuous silence, capped at 3s of total extension
-     (configurable via `VOICEIME_RELEASE_GRACE_SEC`; 0 stops immediately).
+     (configurable via `BAOGU_RELEASE_GRACE_SEC`; 0 stops immediately).
    - Then wait up to 1.2s for the offline Paraformer final, followed by glossary normalization
      and local safe punctuation.
    - If DeepSeek is enabled, "纠错中" / "Correcting" is shown while waiting (default up to
@@ -228,9 +232,9 @@ bash scripts/10-install-service.sh
 
 ### Legacy mode
 
-Setting `VOICEIME_OUTPUT_MODE` to anything other than `preedit` still keeps the
+Setting `BAOGU_OUTPUT_MODE` to anything other than `preedit` still keeps the
 FireRedASR2 + LLM legacy rewrite path, but it is off by default. It requires explicitly
-setting `VOICEIME_LLM_ENABLED=1`. The `punctuation` safe mode only accepts
+setting `BAOGU_LLM_ENABLED=1`. The `punctuation` safe mode only accepts
 punctuation/spacing changes; content-word changes are rejected and the ASR original is
 kept. If the API call fails, a trailing full stop is still appended.
 
@@ -272,7 +276,7 @@ Single CommitString
 
 ## Optional DeepSeek Correction
 
-DeepSeek runs right before the preedit final commit, via `voiceime-engine` → DeepSeek's
+DeepSeek runs right before the preedit final commit, via `baogu-engine` → DeepSeek's
 Anthropic-compatible API (thinking disabled).
 
 ### Three modes
@@ -296,14 +300,14 @@ Unicode characters before and after the input position**:
 - Passwords and sensitive input fields do not provide context.
 - If the app does not support surrounding-text or the native plugin has not been upgraded
   yet, a context-less correction is used automatically.
-- Set `VOICEIME_CONTEXT_ENABLED=0` to disable.
+- Set `BAOGU_CONTEXT_ENABLED=0` to disable.
 - **When cloud correction is enabled**, this surrounding text is sent together with the
   current dictation to the configured DeepSeek endpoint; it is not sent when disabled.
 
 ### Timeout and concurrency
 
-`VOICEIME_LLM_MAX_WAIT` sets the total time the final commit waits for cloud correction
-(seconds; default follows `VOICEIME_LLM_TIMEOUT`). On timeout or a new PTT press, the local
+`BAOGU_LLM_MAX_WAIT` sets the total time the final commit waits for cloud correction
+(seconds; default follows `BAOGU_LLM_TIMEOUT`). On timeout or a new PTT press, the local
 candidate is kept immediately; late results never overwrite committed text. Underlying HTTP
 requests may still run until the network timeout, during which subsequent sentences skip
 the cloud and **do not pile up requests**. Local recognition continues working. Long-sentence
@@ -314,8 +318,8 @@ case the full original is kept.
 
 ```bash
 # Enable dictation cleanup, limit cloud wait to 3 seconds
-VOICEIME_LLM_ENABLED=1 VOICEIME_LLM_MODE=dictation \
-VOICEIME_LLM_MAX_WAIT=3 ./deploy.sh
+BAOGU_LLM_ENABLED=1 BAOGU_LLM_MODE=dictation \
+BAOGU_LLM_MAX_WAIT=3 ./deploy.sh
 ```
 
 During interactive deploy, choose `3) dictation`.
@@ -334,7 +338,7 @@ server.
 Create or edit `.env` in the project root:
 
 ```bash
-VOICEIME_LLM_API=openai
+BAOGU_LLM_API=openai
 DEEPSEEK_BASE_URL=https://api.openai.com/v1
 DEEPSEEK_API_KEY=sk-your-key
 ```
@@ -344,7 +348,7 @@ chmod 600 .env
 ```
 
 - The variables keep their historical `DEEPSEEK_` prefix but work for **any provider**.
-- `DEEPSEEK_BASE_URL` is everything **before** `/chat/completions`. VoiceIME appends
+- `DEEPSEEK_BASE_URL` is everything **before** `/chat/completions`. Baogu IME appends
   `/chat/completions` itself, so do not include it.
 - The key is sent as `Authorization: Bearer <key>`. Local servers that ignore keys still
   need a non-empty placeholder such as `DEEPSEEK_API_KEY=local`.
@@ -366,7 +370,7 @@ The model ID is written into the systemd service by `deploy.sh`, so set it there
 `.env`:
 
 ```bash
-VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<your-model-id> ./deploy.sh
+BAOGU_LLM_ENABLED=1 DEEPSEEK_MODEL=<your-model-id> ./deploy.sh
 ```
 
 Or run `./deploy.sh`, answer `y`, and type the model ID at the
@@ -379,26 +383,36 @@ again.
 ### 3. Tips
 
 - Pick a **fast, non-reasoning** chat model. Every sentence waits for the reply, at most
-  `VOICEIME_LLM_MAX_WAIT` seconds, before it is committed. Slow models just time out, and the
+  `BAOGU_LLM_MAX_WAIT` seconds, before it is committed. Slow models just time out, and the
   local text is used instead.
 - Modes (`punctuation` / `aggressive` / `dictation`), context assistance, and the
   `Ctrl + Shift + F9` toggle behave the same with every provider.
-- To switch back to DeepSeek's default endpoint, delete the `VOICEIME_LLM_API` line (or set
+- To switch back to DeepSeek's default endpoint, delete the `BAOGU_LLM_API` line (or set
   it to `anthropic`) and restore
   `DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic`, then run `./deploy.sh` again.
 - Privacy: when correction is on, the dictated sentence, your personal hotwords, and (unless
-  `VOICEIME_CONTEXT_ENABLED=0`) up to 500 characters of surrounding text are sent to the
+  `BAOGU_CONTEXT_ENABLED=0`) up to 500 characters of surrounding text are sent to the
   provider you configure.
 
 ---
 
 ## Typeless-Inspired Dictation
 
-`VOICEIME_LLM_MODE=dictation` cleans meaningless filler, repetition, and explicit verbal
+`BAOGU_LLM_MODE=dictation` cleans meaningless filler, repetition, and explicit verbal
 self-corrections during cloud correction while requiring the tone and meaning to be preserved.
 This mode permits rewrites; the result still needs real-voice acceptance. The existing
 `punctuation` / `aggressive` modes remain available. Full evidence chain in
 [docs/typeless-research.md](docs/typeless-research.md).
+
+Two safeguards come with it:
+
+- **Profanity is never cleaned up.** The `dictation` and `rewrite` prompts require the
+  speaker's profanity and crude wording to be preserved verbatim, never replaced with
+  a softened phrase.
+- **Every polish is compared with the original.** When the polished text differs from the
+  raw ASR text, one short reviewer call picks between them. If the reviewer chooses the
+  original — or that call fails, times out, or answers ambiguously — the raw transcription
+  is kept and the status becomes `kept-original`.
 
 ---
 
@@ -425,7 +439,7 @@ There are three layers. Pick the one that matches the problem:
 
 | You want to… | Edit | Format |
 |---|---|---|
-| Teach a term and its correct spelling (brand, project, code name) | `~/.config/voiceime/hotwords.txt` | one term per line |
+| Teach a term and its correct spelling (brand, project, code name) | `~/.config/baogu/hotwords.txt` | one term per line |
 | Fix one specific English mishearing everywhere | `hotwords/aliases.tsv` | `misheard<TAB>correct` |
 | Fix a mishearing that is only wrong in a certain context | `hotwords/contextual-aliases.tsv` | `misheard<TAB>correct<TAB>ctx1\|ctx2` |
 
@@ -435,13 +449,17 @@ anything.
 #### 1. Personal terms (start here)
 
 ```bash
-./voiceime-hotwords add "MyProject" "Customer Brand" "New Dental Product"
-./voiceime-hotwords list
-./voiceime-hotwords remove "MyProject"
-./voiceime-hotwords path      # print the file location
+./baogu-hotwords add "MyProject" "Customer Brand" "New Dental Product"
+./baogu-hotwords list
+./baogu-hotwords remove "MyProject"
+./baogu-hotwords path      # print the file location
 ```
 
-The list lives in `~/.config/voiceime/hotwords.txt` (UTF-8, one term per line; blank lines
+Or do it from the keyboard: select the term you keep having to spell, press **Alt + W**
+(left Alt), and a notification confirms the addition. The glossary is rebuilt and picked
+up on the next utterance, with no service restart.
+
+The list lives in `~/.config/baogu/hotwords.txt` (UTF-8, one term per line; blank lines
 and `#` comments are ignored). You can also edit the file directly. Your personal terms:
 
 - are used **locally** to repair the spelling, case, and spacing of English / ASCII terms
@@ -481,7 +499,7 @@ Only add artifacts you have actually seen in your own dictation.
 
 > `hotwords/*.tsv` and the built-in `*.txt` lists are tracked in git. If you edit them,
 > commit the changes to your fork so `git pull` doesn't conflict. Your personal
-> `~/.config/voiceime/hotwords.txt` is outside the repo and never conflicts.
+> `~/.config/baogu/hotwords.txt` is outside the repo and never conflicts.
 
 > The word bank fixes spelling and wording **after** recognition. It cannot make the
 > acoustic model hear a word it never recognized.
@@ -489,7 +507,7 @@ Only add artifacts you have actually seen in your own dictation.
 ### DeepSeek toggle
 
 `Ctrl + Shift + F9` toggles DeepSeek auto-correction; the screen shows on/off indicators.
-State is saved to `~/.config/voiceime/deepseek-enabled.txt` (`1` on, `0` off), preserved
+State is saved to `~/.config/baogu/deepseek-enabled.txt` (`1` on, `0` off), preserved
 across restarts. When off, subsequent correction requests skip the cloud; requests already
 in flight still wait to finish. **Local recognition, glossary, and punctuation keep working**.
 The hotkey uses the current X11 global keyboard listener.
@@ -500,18 +518,18 @@ The hotkey uses the current X11 global keyboard listener.
 
 ```bash
 # Daemon / dictation status / current microphone
-./voiceime-status
+./baogu-status
 
 # Force-stop everything on abnormal state
-./voiceime-reset
+./baogu-reset
 
 # Live logs
-journalctl --user -u voiceime-ptt        -f   # PTT daemon
-journalctl --user -u voiceime-engine     -f   # Default DeepSeek-path engine log
-journalctl --user -u voiceime-corrector  -f   # Legacy FireRed + local corrector only
+journalctl --user -u baogu-ptt        -f   # PTT daemon
+journalctl --user -u baogu-engine     -f   # Default DeepSeek-path engine log
+journalctl --user -u baogu-corrector  -f   # Legacy FireRed + local corrector only
 ```
 
-`voiceime-ptt.service` auto-starts with the graphical session and auto-restarts on abnormal
+`baogu-ptt.service` auto-starts with the graphical session and auto-restarts on abnormal
 exit.
 
 ---
@@ -552,7 +570,7 @@ python3 scripts/08-offline-suite.py \
 ```
 
 The default is the daily path (Sherpa streaming). To test FireRed, temporarily add
-`VOICEIME_FINAL_ENABLED=1`; **do not enable it by default just because the model is already
+`BAOGU_FINAL_ENABLED=1`; **do not enable it by default just because the model is already
 downloaded**. For the current batch of 30 real-voice recordings, streaming content accuracy
 is 90.66% and FireRed is 82.71%. This batch participated in tuning, so it can only act as a
 **development set**; final accuracy needs an additional sample set that did not participate
@@ -572,14 +590,14 @@ real-voice recordings, not based only on subjective description.
 ### Directory structure
 
 ```
-laopan-voice-input-method/
+baogu-voice-input-method/
 ├── deploy.sh                   # Daily rebuild + start script
-├── voiceime-ptt / -engine / -corrector   # User-level service entrypoints
-├── voiceime-lib.sh             # Shared shell library (single-instance lock, signal I/O, state query)
-├── voiceime_glossary.py        # Glossary deterministic correction
-├── voiceime_settings.py        # Settings and persistence
+├── baogu-ptt / -engine / -corrector   # User-level service entrypoints
+├── baogu-lib.sh             # Shared shell library (single-instance lock, signal I/O, state query)
+├── baogu_glossary.py        # Glossary deterministic correction
+├── baogu_settings.py        # Settings and persistence
 ├── native/                     # Fcitx5 native bridge (C++)
-│   ├── voiceime.cpp
+│   ├── baogu.cpp
 │   ├── build.sh
 │   └── install.sh
 ├── hotwords/                   # Built-in glossary (TSV)
@@ -613,7 +631,7 @@ cleanup, LLM correction, settings, etc.
 
 Historical results live in `logs/latency_results_*.tsv` and `logs/app_compat_*.tsv`. The
 latency log only records character counts, not recognized content; use
-`journalctl --user -u voiceime-ptt` to inspect.
+`journalctl --user -u baogu-ptt` to inspect.
 
 ---
 
@@ -627,7 +645,7 @@ latency log only records character counts, not recognized content; use
 - **Build tools**: `g++`, `make`
 - **Python**: 3.10+, with `vosk` / `sherpa-onnx` / `sounddevice` via `pip`
 - **Audio**: PipeWire or PulseAudio; default sample rate 16 kHz
-- **Microphone**: USB input preferred; re-resolved on every key press (`voiceime-mic`)
+- **Microphone**: USB input preferred; re-resolved on every key press (`baogu-mic`)
 
 ### Models
 
@@ -643,7 +661,7 @@ latency log only records character counts, not recognized content; use
 
 ## Legacy POC Reference
 
-> Codename: VoiceIME POC ｜ Version v0.1 ｜ Status: in progress
+> Codename: Baogu IME POC ｜ Version v0.1 ｜ Status: in progress
 > Full conclusions in [`POC-REPORT.md`](POC-REPORT.md) (conclusion B: POC partially passed;
 > finish real-voice verification before further development).
 
@@ -667,14 +685,14 @@ directly into the current input field without copy-paste**.
 ### Manual nerd-dictation path (still usable)
 
 ```bash
-/mnt/data/james/Documents/sidework/laopan-voice-input-method/nerd-dictation/nerd-dictation begin \
-    --vosk-model-dir /mnt/data/james/Documents/sidework/laopan-voice-input-method/models/vosk-model-small-cn-0.22 \
+./nerd-dictation/nerd-dictation begin \
+    --vosk-model-dir models/vosk-model-small-cn-0.22 \
     --sample-rate 16000 \
     --defer-output
 
 # Speak...
 
-/mnt/data/james/Documents/sidework/laopan-voice-input-method/nerd-dictation/nerd-dictation end
+./nerd-dictation/nerd-dictation end
 ```
 
 - The `end` command touches a cookie file; the background `begin` process detects it and
@@ -688,22 +706,22 @@ directly into the current input field without copy-paste**.
 - **Only one nerd-dictation process at a time**. `begin` writes the PID into a public
   cookie; a second invocation overwrites it, leaving the first instance orphaned. Pressing
   the hotkey N times leaves N instances (each ~260MB, each grabbing a microphone). The
-  process is therefore owned by the `voiceime-ptt` daemon and switched via signals:
+  process is therefore owned by the `baogu-ptt` daemon and switched via signals:
   - `SIGCONT`: start recording (spawn `parec`)
   - `SIGUSR1`: flush text → close `parec` → process self-`SIGSTOP`
 - When idle the process is in `T` (stopped) state: **0% CPU, no microphone**, model stays
   in memory, ~100ms to record on key press.
 - **Key source**: `xinput test-xi2 --root` (GNOME's own shortcut only emits key-down and
-  cannot bind a single modifier). Right Alt = keycode 108; use `VOICEIME_PTT_KEYCODE` to
+  cannot bind a single modifier). Right Alt = keycode 108; use `BAOGU_PTT_KEYCODE` to
   override for a different layout. Auto-repeated key-down events are ignored.
 - **Ignore XTEST-synthesized key events**: `xdotool --clearmodifiers` during commit emits
   modifier release/restore events that should not be treated as real PTT. Backspace clears
   modifiers to avoid becoming Alt+BackSpace and similar app shortcuts.
 - **Read buffered audio promptly**: read all currently available data per round, keep
   fragments shorter than a full PCM sample. Daily service checks every 20ms.
-- **Re-resolve the microphone on every key press** (`voiceime-mic`): prefer the current
+- **Re-resolve the microphone on every key press** (`baogu-mic`): prefer the current
   default input (if USB) → any USB input → current default → any input.
-- **Independent state files**: daily service uses `$XDG_RUNTIME_DIR/voiceime-<uid>.cookie`,
+- **Independent state files**: daily service uses `$XDG_RUNTIME_DIR/baogu-<uid>.cookie`,
   isolated from the default cookie used by manual testing.
 
 > Right Alt is still a normal Alt key; while held, other programs also see it as Alt. If you
@@ -737,7 +755,7 @@ directly into the current input field without copy-paste**.
 
 [English version ↑](#english-version) · **中文**
 
-# VoiceIME — Ubuntu 中文 / 中英混合语音输入
+# 苞谷输入法 — Ubuntu 中文 / 中英混合语音输入
 
 > **PR #6 推荐架构**：Sherpa 双语 streaming Paraformer 实时 preedit →
 > offline Paraformer large 快速 final → 领域词库确定性纠正 →
@@ -789,8 +807,8 @@ directly into the current input field without copy-paste**.
 ### 2. 克隆并部署
 
 ```bash
-git clone https://github.com/panjiangyi/laopan-voice-input-method.git
-cd laopan-voice-input-method
+git clone https://github.com/panjiangyi/baogu-voice-input-method.git
+cd baogu-voice-input-method
 ./deploy.sh
 ```
 
@@ -799,7 +817,7 @@ cd laopan-voice-input-method
 1. 安装缺少的 apt 包和 `sherpa-onnx` Python 运行时；
 2. 把语音模型下载到 `models/`（仅首次）；
 3. 编译并安装 Fcitx5 插件，然后重启 Fcitx5；
-4. 安装并启动 `voiceime-ptt` 和 `voiceime-overlay` 两个用户级服务。
+4. 安装并启动 `baogu-ptt` 和 `baogu-overlay` 两个用户级服务。
 
 运行过程中会问 **“Enable DeepSeek correction after each utterance? [y/N]”**。想要完全本地
 运行就答 `N`。之后随时可以开启 AI 纠错，见 [可选 DeepSeek 纠错](#可选-deepseek-纠错) 或
@@ -811,7 +829,7 @@ cd laopan-voice-input-method
 ### 3. 验证并开始听写
 
 ```bash
-./voiceime-status        # 显示 "state: suspended" 表示已就绪、处于待机
+./baogu-status        # 显示 "state: suspended" 表示已就绪、处于待机
 ```
 
 点进任意输入框，**按住右 Alt** 说话，**松开**即上屏。说话时文字实时显示，松键后一次性提交。
@@ -840,35 +858,39 @@ git pull && ./deploy.sh
 | Ctrl + Alt + V | 免手持切换：按一下开始，再按一下停止 |
 | Ctrl + Alt + B | 结束当前听写并上屏 |
 | Ctrl + Shift + F9 | 切换 DeepSeek 自动纠错（状态持久化） |
-| **按住 Alt + A**（左 Alt） | 用鼠标选中文字后，按住说话提问；松开后 AI 回答在独立窗口弹出 |
+| **按住 Alt + A**（左 Alt） | 用鼠标选中文字后，按住说话提问；松开后 AI 回答在独立窗口弹出。不说话则改为解释选区（或剪贴板）内容 |
+| **Alt + W**（左 Alt） | 把选中的文字（没有选区就用剪贴板）一键加入个人热词，并弹通知确认 |
 
 ### CLI / 服务
 
 ```bash
-./voiceime-status         # 守护进程 / 听写状态 / 当前麦克风
-./voiceime-reset          # 异常时强制清理引擎和录音进程
-./voiceime-hotwords ...   # 个人热词 add / list / remove
+./baogu-status         # 守护进程 / 听写状态 / 当前麦克风
+./baogu-reset          # 异常时强制清理引擎和录音进程
+./baogu-hotwords ...   # 个人热词 add / list / remove
 
-journalctl --user -u voiceime-ptt        -f   # PTT 守护进程
-journalctl --user -u voiceime-engine     -f   # 默认 DeepSeek 路径的引擎日志
-journalctl --user -u voiceime-corrector  -f   # 仅 legacy FireRed + 本地纠错服务
+journalctl --user -u baogu-ptt        -f   # PTT 守护进程
+journalctl --user -u baogu-engine     -f   # 默认 DeepSeek 路径的引擎日志
+journalctl --user -u baogu-corrector  -f   # 仅 legacy FireRed + 本地纠错服务
 ```
 
 ### 关键环境变量
 
 | 变量 | 用途 |
 |---|---|
-| `VOICEIME_LLM_ENABLED` | 1 = 启用 DeepSeek 后处理；0 = 关闭 |
-| `VOICEIME_LLM_MODE` | `aggressive`（默认）/ `punctuation` / `dictation` |
-| `VOICEIME_LLM_TIMEOUT` | 等待云端纠错的超时（秒） |
-| `VOICEIME_LLM_MAX_WAIT` | 最终提交等待云端纠错的总时间（秒） |
+| `BAOGU_LLM_ENABLED` | 1 = 启用 DeepSeek 后处理；0 = 关闭 |
+| `BAOGU_LLM_MODE` | `aggressive`（默认）/ `punctuation` / `dictation` |
+| `BAOGU_LLM_TIMEOUT` | 等待云端纠错的超时（秒） |
+| `BAOGU_LLM_MAX_WAIT` | 最终提交等待云端纠错的总时间（秒） |
 | `DEEPSEEK_MODEL` | 模型 ID，默认 `deepseek-v4-flash`（部署时设置） |
 | `DEEPSEEK_BASE_URL` / `DEEPSEEK_API_KEY` | AI 纠错的地址和密钥，写在 `.env`（名字带 DeepSeek，但适用于任何服务商） |
-| `VOICEIME_LLM_API` | `anthropic`（默认，`/v1/messages`）或 `openai`（`/chat/completions`） |
-| `VOICEIME_CORRECTOR_ZEN_MODEL` / `_REASONING` | 换模型 / 推理档（low/medium/high/xhigh） |
-| `VOICEIME_RELEASE_GRACE_SEC` | 松键后尾音等待秒数（默认 0.25，封顶 3s，0 立即停） |
-| `VOICEIME_CONTEXT_ENABLED` | 0 = 关闭应用名 / surrounding-text 上下文 |
-| `VOICEIME_PTT_KEYCODE` | 覆盖 PTT 物理 keycode（默认右 Alt = 108） |
+| `BAOGU_LLM_API` | `anthropic`（默认，`/v1/messages`）或 `openai`（`/chat/completions`） |
+| `BAOGU_CORRECTOR_ZEN_MODEL` / `_REASONING` | 换模型 / 推理档（low/medium/high/xhigh） |
+| `BAOGU_RELEASE_GRACE_SEC` | 松键后尾音等待秒数（默认 0.25，封顶 3s，0 立即停） |
+| `BAOGU_CONTEXT_ENABLED` | 0 = 关闭应用名 / surrounding-text 上下文 |
+| `BAOGU_PTT_KEYCODE` | 覆盖 PTT 物理 keycode（默认右 Alt = 108） |
+| `BAOGU_HOTWORD_ENABLED` | 1（默认）= 启用 Alt + W 一键加常用词 |
+| `BAOGU_HOTWORD_KEYCODE` / `BAOGU_HOTWORD_MODIFIER_KEYCODE` | 常用词快捷键 keycode（默认 25 = `w`，64 = 左 Alt；keycode 取自 X keymap，未必等同 PC105 标准表，用 `xmodmap -pke` 查） |
+| `BAOGU_HOTWORD_MAX_CHARS` | 单个热词接受的最长选区长度（默认 80） |
 
 密钥只从项目根目录的 `.env` 读取（权限 600）。
 
@@ -912,18 +934,18 @@ echo 'DEEPSEEK_API_KEY=...'      >  .env
 echo 'DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic' >> .env
 echo 'DEEPSEEK_MODEL=deepseek-v4-flash'                    >> .env
 chmod 600 .env
-# 部署时选择 y，或设置 VOICEIME_LLM_ENABLED=1
+# 部署时选择 y，或设置 BAOGU_LLM_ENABLED=1
 
 # 4. 安装并启动用户级 systemd 服务
 bash scripts/10-install-service.sh
 
 # 5. 检查
-./voiceime-status
+./baogu-status
 ```
 
-> **`voiceime-engine` 直接调用 DeepSeek 的 Anthropic 兼容接口，明确关闭 thinking**；
+> **`baogu-engine` 直接调用 DeepSeek 的 Anthropic 兼容接口，明确关闭 thinking**；
 > 不需要 OpenCode、cc-switch 或本地纠错服务。Legacy 路径（FireRedASR2 + 本地纠错服务）
-> 仅在 `VOICEIME_OUTPUT_MODE` 设为非 `preedit` 且 `VOICEIME_LLM_ENABLED=1` 时启用。
+> 仅在 `BAOGU_OUTPUT_MODE` 设为非 `preedit` 且 `BAOGU_LLM_ENABLED=1` 时启用。
 
 ---
 
@@ -934,7 +956,7 @@ bash scripts/10-install-service.sh
 1. **按住右 Alt** 开始说话。实时识别结果显示为 Fcitx preedit，**不修改应用正文**。
 2. **松开右 Alt**：
    - 立即关闭录音声波，显示「识别优化中」。
-   - 若仍有接近最近说话音量的声音，继续收取尾音；连续安静约 0.25 秒即停止，最多延长 3 秒（`VOICEIME_RELEASE_GRACE_SEC` 可配置，设为 0 则立即停）。
+   - 若仍有接近最近说话音量的声音，继续收取尾音；连续安静约 0.25 秒即停止，最多延长 3 秒（`BAOGU_RELEASE_GRACE_SEC` 可配置，设为 0 则立即停）。
    - 随后最多等待 1.2 秒的 offline Paraformer final，再应用词库规范化和本地安全标点。
    - 如启用 DeepSeek，还会显示「纠错中」并等待结果（默认最多 15 秒），最后只 commit 一次，引擎回到待机。
 3. **收尾期间再次按键**会提前结束本句并开始下一句。
@@ -948,8 +970,8 @@ bash scripts/10-install-service.sh
 
 ### Legacy 模式
 
-`VOICEIME_OUTPUT_MODE` 设为 `preedit` 以外的值时仍保留 FireRedASR2 + LLM 旧重写路径，但默认关闭。
-需要显式设 `VOICEIME_LLM_ENABLED=1` 才会启用：`punctuation` 安全模式只接受标点/空格变化，
+`BAOGU_OUTPUT_MODE` 设为 `preedit` 以外的值时仍保留 FireRedASR2 + LLM 旧重写路径，但默认关闭。
+需要显式设 `BAOGU_LLM_ENABLED=1` 才会启用：`punctuation` 安全模式只接受标点/空格变化，
 实词变化会被拒绝并保留 ASR 原文；API 失败时仍会补一个句末句号。
 
 ---
@@ -989,7 +1011,7 @@ offline Paraformer large（最多等 1.2 秒）
 
 ## 可选 DeepSeek 纠错
 
-DeepSeek 在 preedit 最终提交前运行，路径为 `voiceime-engine` → DeepSeek
+DeepSeek 在 preedit 最终提交前运行，路径为 `baogu-engine` → DeepSeek
 Anthropic 兼容接口（thinking 已关闭）。
 
 ### 三种模式
@@ -1010,12 +1032,12 @@ Anthropic 兼容接口（thinking 已关闭）。
 - 不包含选区正文；
 - 密码或 sensitive 输入框不提供上下文；
 - 应用不支持 surrounding-text 或尚未升级原生插件时自动使用无上下文纠错；
-- `VOICEIME_CONTEXT_ENABLED=0` 关闭；
+- `BAOGU_CONTEXT_ENABLED=0` 关闭；
 - **启用云端纠错时**，这部分文字会随当前口述文本发送到已配置的 DeepSeek 接口；关闭时不会发送。
 
 ### 超时与并发
 
-`VOICEIME_LLM_MAX_WAIT` 设置最终提交等待云端纠错的总时间（秒，默认沿用 `VOICEIME_LLM_TIMEOUT`）。
+`BAOGU_LLM_MAX_WAIT` 设置最终提交等待云端纠错的总时间（秒，默认沿用 `BAOGU_LLM_TIMEOUT`）。
 超时或再次按下 PTT 时立即保留本地候选；迟到结果不会再改正文。底层 HTTP 请求可能仍运行
 到网络超时，期间后续句子跳过云端，**不堆积请求**。本地识别继续工作。长句输出预算随长度
 增长，服务端明确报告输出截断时保留完整原文。
@@ -1024,8 +1046,8 @@ Anthropic 兼容接口（thinking 已关闭）。
 
 ```bash
 # 启用口语整理，将云端等待限制为 3 秒
-VOICEIME_LLM_ENABLED=1 VOICEIME_LLM_MODE=dictation \
-VOICEIME_LLM_MAX_WAIT=3 ./deploy.sh
+BAOGU_LLM_ENABLED=1 BAOGU_LLM_MODE=dictation \
+BAOGU_LLM_MAX_WAIT=3 ./deploy.sh
 ```
 
 交互部署时选择 `3) dictation`。
@@ -1043,7 +1065,7 @@ AI 纠错默认走 DeepSeek 的 Anthropic 兼容接口，也可以换成**任何
 在项目根目录创建或编辑 `.env`：
 
 ```bash
-VOICEIME_LLM_API=openai
+BAOGU_LLM_API=openai
 DEEPSEEK_BASE_URL=https://api.openai.com/v1
 DEEPSEEK_API_KEY=sk-your-key
 ```
@@ -1053,7 +1075,7 @@ chmod 600 .env
 ```
 
 - 变量沿用历史上的 `DEEPSEEK_` 前缀，但**适用于任何服务商**。
-- `DEEPSEEK_BASE_URL` 填 `/chat/completions` **之前**的部分。VoiceIME 会自己拼上
+- `DEEPSEEK_BASE_URL` 填 `/chat/completions` **之前**的部分。苞谷输入法会自己拼上
   `/chat/completions`，不要重复写。
 - 密钥以 `Authorization: Bearer <key>` 发送。不校验密钥的本地服务也要填一个非空占位值，
   例如 `DEEPSEEK_API_KEY=local`。
@@ -1074,7 +1096,7 @@ chmod 600 .env
 模型 ID 由 `deploy.sh` 写进 systemd 服务，所以要在部署时指定，**不要**写在 `.env` 里：
 
 ```bash
-VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
+BAOGU_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 ```
 
 也可以直接运行 `./deploy.sh`，答 `y`，然后在 `DeepSeek model [...]` 提示处输入模型 ID。
@@ -1085,13 +1107,13 @@ VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 
 ### 3. 提示
 
-- 选**快速、非推理**的对话模型。每句话提交前都要等它返回，最多等 `VOICEIME_LLM_MAX_WAIT`
+- 选**快速、非推理**的对话模型。每句话提交前都要等它返回，最多等 `BAOGU_LLM_MAX_WAIT`
   秒。模型太慢只会超时，然后直接用本地识别结果。
 - 三种模式（`punctuation` / `aggressive` / `dictation`）、上下文辅助和 `Ctrl + Shift + F9`
   开关在任何服务商下表现一致。
-- 想换回 DeepSeek 默认接口：删除 `VOICEIME_LLM_API` 这一行（或设为 `anthropic`），把
+- 想换回 DeepSeek 默认接口：删除 `BAOGU_LLM_API` 这一行（或设为 `anthropic`），把
   `DEEPSEEK_BASE_URL` 改回 `https://api.deepseek.com/anthropic`，再运行 `./deploy.sh`。
-- 隐私：开启纠错后，当前这句话、你的个人热词，以及（除非设置 `VOICEIME_CONTEXT_ENABLED=0`）
+- 隐私：开启纠错后，当前这句话、你的个人热词，以及（除非设置 `BAOGU_CONTEXT_ENABLED=0`）
   光标前后最多 500 个字符会发送给你配置的服务商。
 
 ---
@@ -1100,6 +1122,7 @@ VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 
 用鼠标**选中一段文字**，**按住左 Alt + A** 说出你的问题，**松开**后 AI 回答会在独立窗口弹出。
 适合「这段什么意思」「帮我翻译」「总结一下」这类针对选中内容的提问。
+仅在没有同时按住 Ctrl、Shift、Super 或右 Alt 等其他修饰键时触发，避免与其他快捷键冲突。
 
 ```text
 鼠标选中文字
@@ -1111,12 +1134,25 @@ VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 选中文字 + 问题 → 已配置的 AI 接口
     ↓
 独立窗口显示回答（可选中、可复制、Esc 关闭）
+
+没说话时：
+    ↓
+选中文字（没有就用剪贴板）+ 固定的「解释这段内容」问题 → 同一个 AI 接口
 ```
+
+### 不说话就直接解释
+
+按了 Alt + A 却一句话没说，不算失败：你多半只是想搞懂手上这段文字。此时直接用固定
+问题去问「选区（没有选区就用剪贴板）里这段内容」，英文单词或句子解释含义和用法，
+其他语言就解释它在说什么。窗口标题显示「解释选区 / 剪贴板内容」。
+
+如果既没有说话、选区和剪贴板也都是空的，窗口才会提示「没有听清问题，选区和剪贴板
+也没有内容」。
 
 ### 为什么是左 Alt
 
-右 Alt 是听写键，所以提问用**左 Alt**，两者互不干扰。`VOICEIME_ASK_KEYCODE`
-（默认 38 = `a`）和 `VOICEIME_ASK_MODIFIER_KEYCODE`（默认 64 = 左 Alt）可以覆盖。
+右 Alt 是听写键，所以提问用**左 Alt**，两者互不干扰。`BAOGU_ASK_KEYCODE`
+（默认 38 = `a`）和 `BAOGU_ASK_MODIFIER_KEYCODE`（默认 64 = 左 Alt）可以覆盖。
 
 ### 选中文字是怎么读到的
 
@@ -1124,6 +1160,8 @@ VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
    都支持，**不碰系统剪贴板**。
 2. 如果该程序不导出 PRIMARY（少数 Electron 应用），回退到模拟 `Ctrl+C`：先保存
    剪贴板，复制后再还原，尽量不破坏你原来的剪贴板内容。
+3. 剪贴板（CLIPBOARD）会在按键那一刻先读一份，只用于「没说话就解释」的兜底，
+   以及 Alt + W 加热词时的后备来源。
 
 选区文本不写进应用；提问识别结果也不会插入正文，只用于提问。
 
@@ -1131,8 +1169,8 @@ VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 
 - 复用「[接入 OpenAI 兼容 API](#接入-openai-兼容-api)」里配置的接口和 `.env` 密钥。
 - 与纠错开关独立：即使关闭了自动纠错（`Ctrl + Shift + F9`），只要配好密钥，提问仍可用。
-- `VOICEIME_LLM_DISABLED=1` 会同时禁止纠错和提问。
-- 回答长度预算用 `VOICEIME_ASK_MAX_TOKENS`（默认 2048）。
+- `BAOGU_LLM_DISABLED=1` 会同时禁止纠错和提问。
+- 回答长度预算用 `BAOGU_ASK_MAX_TOKENS`（默认 2048）。
 - 隐私：**选中的文字和你说的问题会一起发送**给你配置的服务商。
 
 ### 窗口
@@ -1147,15 +1185,23 @@ VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 - 有些应用既不导出 PRIMARY，又把 `Ctrl+C` 绑定成别的功能（个别终端要用
   `Ctrl+Shift+C`），这类应用可能读不到选区，此时窗口会提示「没有听清你的问题，请重试」。
 - 密码框里的选中通常无法复制，属预期行为。
-- `VOICEIME_ASK_ENABLED=0` 可整体关闭这个功能。
+- `BAOGU_ASK_ENABLED=0` 可整体关闭这个功能。
 
 ---
 
 ## 借鉴 Typeless 的输入体验
 
-`VOICEIME_LLM_MODE=dictation` 在云端纠错时整理无意义口头语、重复和明确的口头自我纠正，
+`BAOGU_LLM_MODE=dictation` 在云端纠错时整理无意义口头语、重复和明确的口头自我纠正，
 同时要求保留语气和原意。此模式允许改写，效果仍需真人录音验收；原有 `punctuation` /
 `aggressive` 模式继续可用。完整证据链见 [docs/typeless-research.md](docs/typeless-research.md)。
+
+两点额外的保险：
+
+- **不净化脏话**：`dictation` 和 `rewrite` 提示词都明确要求逐字保留说话者的脏话和粗口，
+  禁止用委婉说法替换。
+- **润色后与原文对比**：只要润色结果和识别原文不同，就会再跑一次很短的评审调用，让模型
+  在「原文 / 润色版」之间二选一。判给原文、或评审调用失败/超时/答非所问时，一律保留原始
+  转写，状态记为 `kept-original`。也就是说多花一次小请求，换「润色后还不如原来」时能退回。
 
 ---
 
@@ -1179,7 +1225,7 @@ VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 
 | 你想要… | 编辑 | 格式 |
 |---|---|---|
-| 教它一个词和正确写法（品牌、项目名、代码标识符） | `~/.config/voiceime/hotwords.txt` | 一行一个词 |
+| 教它一个词和正确写法（品牌、项目名、代码标识符） | `~/.config/baogu/hotwords.txt` | 一行一个词 |
 | 把某个固定的英文误识别全局改对 | `hotwords/aliases.tsv` | `误识别<TAB>正确写法` |
 | 只在特定上下文里才算错的误识别 | `hotwords/contextual-aliases.tsv` | `误识别<TAB>正确写法<TAB>上下文1\|上下文2` |
 
@@ -1188,13 +1234,16 @@ VOICEIME_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 #### 1. 个人热词（从这里开始）
 
 ```bash
-./voiceime-hotwords add "MyProject" "Customer Brand" "New Dental Product"
-./voiceime-hotwords list
-./voiceime-hotwords remove "MyProject"
-./voiceime-hotwords path      # 打印文件位置
+./baogu-hotwords add "MyProject" "Customer Brand" "New Dental Product"
+./baogu-hotwords list
+./baogu-hotwords remove "MyProject"
+./baogu-hotwords path      # 打印文件位置
 ```
 
-词表保存在 `~/.config/voiceime/hotwords.txt`（UTF-8，一行一个词，空行和 `#` 注释会被忽略），
+也可以直接用键盘：选中那个老是要拼错的词，按 **Alt + W**（左 Alt），弹通知即已加入。
+词库会重建，下次听写自动生效，不用重启服务。
+
+词表保存在 `~/.config/baogu/hotwords.txt`（UTF-8，一行一个词，空行和 `#` 注释会被忽略），
 也可以直接编辑这个文件。个人热词：
 
 - 在**本地**用来修正英文 / ASCII 词的拼写、大小写和空格（例如 `get hub` → `GitHub`）；
@@ -1228,14 +1277,14 @@ Dabby Dental	Darby Dental
 只添加你在自己听写中真实遇到过的误识别。
 
 > `hotwords/*.tsv` 和内置的 `*.txt` 词表都在 git 仓库里。修改后请提交到你自己的 fork，
-> 避免 `git pull` 冲突。个人词表 `~/.config/voiceime/hotwords.txt` 在仓库之外，不会冲突。
+> 避免 `git pull` 冲突。个人词表 `~/.config/baogu/hotwords.txt` 在仓库之外，不会冲突。
 
 > 词库是在识别**之后**修正拼写和用词，无法让声学模型听出它根本没识别出的词。
 
 ### DeepSeek 切换
 
 `Ctrl + Shift + F9` 切换 DeepSeek 自动纠错，屏幕显示开启/关闭提示。状态保存在
-`~/.config/voiceime/deepseek-enabled.txt`（`1` 开启、`0` 关闭），重启后保留。关闭后
+`~/.config/baogu/deepseek-enabled.txt`（`1` 开启、`0` 关闭），重启后保留。关闭后
 后续纠错请求跳过云端；已经发出的请求仍等待结束。**本地识别、词库和标点继续工作**。
 快捷键沿用当前 X11 全局键盘监听。
 
@@ -1245,18 +1294,18 @@ Dabby Dental	Darby Dental
 
 ```bash
 # 看守护进程 / 听写状态 / 当前麦克风
-./voiceime-status
+./baogu-status
 
 # 异常时全部停掉
-./voiceime-reset
+./baogu-reset
 
 # 实时日志
-journalctl --user -u voiceime-ptt        -f   # PTT 守护进程
-journalctl --user -u voiceime-engine     -f   # 默认 DeepSeek 路径的引擎日志
-journalctl --user -u voiceime-corrector  -f   # 仅 legacy FireRed + 本地纠错服务
+journalctl --user -u baogu-ptt        -f   # PTT 守护进程
+journalctl --user -u baogu-engine     -f   # 默认 DeepSeek 路径的引擎日志
+journalctl --user -u baogu-corrector  -f   # 仅 legacy FireRed + 本地纠错服务
 ```
 
-`voiceime-ptt.service` 随图形会话自启，异常自动重启。
+`baogu-ptt.service` 随图形会话自启，异常自动重启。
 
 ---
 
@@ -1286,7 +1335,7 @@ python3 scripts/08-offline-suite.py \
   --manifest samples/voice-input-session-20260921-211507/manifest.tsv
 ```
 
-默认使用日常路径（Sherpa streaming）。测试 FireRed 时临时加 `VOICEIME_FINAL_ENABLED=1`；
+默认使用日常路径（Sherpa streaming）。测试 FireRed 时临时加 `BAOGU_FINAL_ENABLED=1`；
 **不要仅因模型已经下载就默认启用**。当前这批 30 条真人录音的 streaming 内容准确率为
 90.66%，FireRed 为 82.71%。这批数据参与了调优，**只能作为开发集**；最终准确率需要另录
 未参与调优的样本验收。
@@ -1303,14 +1352,14 @@ python3 scripts/08-offline-suite.py \
 ### 目录结构
 
 ```
-laopan-voice-input-method/
+baogu-voice-input-method/
 ├── deploy.sh                   # 日常重建 + 启动脚本
-├── voiceime-ptt / -engine / -corrector   # 用户级服务入口
-├── voiceime-lib.sh             # 公共 shell 库（单实例锁、信号收发、状态查询）
-├── voiceime_glossary.py        # 词库确定性纠正
-├── voiceime_settings.py        # 设置与持久化
+├── baogu-ptt / -engine / -corrector   # 用户级服务入口
+├── baogu-lib.sh             # 公共 shell 库（单实例锁、信号收发、状态查询）
+├── baogu_glossary.py        # 词库确定性纠正
+├── baogu_settings.py        # 设置与持久化
 ├── native/                     # Fcitx5 原生桥（C++）
-│   ├── voiceime.cpp
+│   ├── baogu.cpp
 │   ├── build.sh
 │   └── install.sh
 ├── hotwords/                   # 内置词库（TSV）
@@ -1342,7 +1391,7 @@ python3 -m unittest discover -s tests -v   # 不录音、不向桌面打字
 ### 延迟与兼容性
 
 历史结果在 `logs/latency_results_*.tsv` 和 `logs/app_compat_*.tsv`。耗时日志只记录字符数，
-不保存识别内容，可用 `journalctl --user -u voiceime-ptt` 查看。
+不保存识别内容，可用 `journalctl --user -u baogu-ptt` 查看。
 
 ---
 
@@ -1354,7 +1403,7 @@ python3 -m unittest discover -s tests -v   # 不录音、不向桌面打字
 - **构建工具**：`g++`、`make`
 - **Python**：3.10+，`pip` 装 `vosk` / `sherpa-onnx` / `sounddevice` 等
 - **音频**：PipeWire 或 PulseAudio；默认采样率 16 kHz
-- **麦克风**：USB 输入优先；每次按键重新解析（`voiceime-mic`）
+- **麦克风**：USB 输入优先；每次按键重新解析（`baogu-mic`）
 
 ### 模型
 
@@ -1370,7 +1419,7 @@ python3 -m unittest discover -s tests -v   # 不录音、不向桌面打字
 
 ## Legacy POC 资料
 
-> 项目代号：VoiceIME POC ｜ 版本 v0.1 ｜ 状态：执行中
+> 项目代号：苞谷输入法 POC ｜ 版本 v0.1 ｜ 状态：执行中
 > 完整结论见 [`POC-REPORT.md`](POC-REPORT.md)（结论 B：POC 部分通过，先完成真人语音验证再二开）。
 
 ### 核心目标
@@ -1392,14 +1441,14 @@ python3 -m unittest discover -s tests -v   # 不录音、不向桌面打字
 ### 手动 nerd-dictation 路径（仍可用）
 
 ```bash
-/mnt/data/james/Documents/sidework/laopan-voice-input-method/nerd-dictation/nerd-dictation begin \
-    --vosk-model-dir /mnt/data/james/Documents/sidework/laopan-voice-input-method/models/vosk-model-small-cn-0.22 \
+./nerd-dictation/nerd-dictation begin \
+    --vosk-model-dir models/vosk-model-small-cn-0.22 \
     --sample-rate 16000 \
     --defer-output
 
 # 说话...
 
-/mnt/data/james/Documents/sidework/laopan-voice-input-method/nerd-dictation/nerd-dictation end
+./nerd-dictation/nerd-dictation end
 ```
 
 - `end` 命令 touch cookie 文件，后台 `begin` 进程检测到后执行最终识别并上屏。
@@ -1411,17 +1460,17 @@ python3 -m unittest discover -s tests -v   # 不录音、不向桌面打字
 
 - **只允许一个 nerd-dictation 进程**。`begin` 把 PID 写入公共 cookie，第二次直接覆盖，
   第一个实例就成为孤儿；按 N 次热键就留 N 个实例（每个约 260MB、各占一路麦克风）。
-  所以进程由 `voiceime-ptt` 守护进程独占，用信号切换状态：
+  所以进程由 `baogu-ptt` 守护进程独占，用信号切换状态：
   - `SIGCONT`：开始录音（`parec` 起来）
   - `SIGUSR1`：冲刷文字 → 关掉 `parec` → 进程自己 `SIGSTOP`
 - 空闲时进程是 `T`（停止）状态：**0% CPU、不占麦克风**，模型留在内存里，按下键 ~100ms 就能录。
 - **按键来源**：`xinput test-xi2 --root`（GNOME 自己的快捷键只有按下事件，也绑不了单独修饰键）。
-  右 Alt = keycode 108，换布局时用 `VOICEIME_PTT_KEYCODE` 覆盖。自动重复的按下事件被忽略。
+  右 Alt = keycode 108，换布局时用 `BAOGU_PTT_KEYCODE` 覆盖。自动重复的按下事件被忽略。
 - **忽略 XTEST 合成按键**：上屏时 `xdotool --clearmodifiers` 会产生修饰键松开/恢复事件，
   不能当作真人的 PTT 操作。退格会清除修饰键，避免变成 Alt+BackSpace 等应用快捷键。
 - **及时读取积压音频**：每轮读取当前可用数据，保留不足完整 PCM 采样的碎片。日常服务每 20ms 检查一次。
-- **麦克风每次按键重新解析**（`voiceime-mic`）：优先当前默认输入（若是 USB）→ 任意 USB 输入 → 当前默认 → 任意输入。
-- **独立状态文件**：日常服务使用 `$XDG_RUNTIME_DIR/voiceime-<uid>.cookie`，与手动测试的默认 cookie 隔离。
+- **麦克风每次按键重新解析**（`baogu-mic`）：优先当前默认输入（若是 USB）→ 任意 USB 输入 → 当前默认 → 任意输入。
+- **独立状态文件**：日常服务使用 `$XDG_RUNTIME_DIR/baogu-<uid>.cookie`，与手动测试的默认 cookie 隔离。
 
 > 右 Alt 仍然是普通 Alt 键，按住时其它程序也会当成 Alt。若不想要这个副作用，可以把它
 > 映射掉：`xmodmap -e 'keycode 108 = VoidSymbol'`（xinput 读的是映射前的 keycode，PTT 不受影响）。
@@ -1435,3 +1484,28 @@ python3 -m unittest discover -s tests -v   # 不录音、不向桌面打字
 3. **X11 全局键盘监听**：PTT 与 `Ctrl+Shift+F9` 都通过 `xinput test-xi2 --root` 监听；Wayland 需 ydotool 等 root 服务，本项目目前限定 X11。
 4. **2026-09-08 POC 修复验证**：隔离 X11 桌面中，以 16kHz 录音重放、真实 Vosk 和 xdotool 连续测试 3 次即时上屏，约 1 秒出现首段文字；按住 Alt 的中文退格修正通过。**此项不替代当前麦克风的真人语音验收**。
 5. **后续原生输入验证**：Fcitx5 + GTK4 连续 3 次实时识别上屏通过；首段文字约 1 秒出现；VTE/Bash 终端按住 Alt 的中文输入与修正通过。原生接口测试还覆盖焦点丢失、拒绝删除本次听写之前的文字，源码见 `tests/native_bridge.py`。
+
+### 外放视频时语音输入（WebRTC 回声消除）
+
+PipeWire / PulseAudio 支持 `module-echo-cancel` 时，可以使用系统 WebRTC AEC。
+在项目目录执行：
+
+```bash
+./baogu-aec on       # 创建虚拟麦克风，将当前输出上的播放流接入回声消除
+./baogu-aec status   # 查看状态
+./baogu-aec off      # 恢复原设备并卸载本工具创建的模块
+```
+
+开启后松开并重新按下语音输入快捷键，输入法会优先录制 `baogu_echo_source`。
+播放默认设备会切到 `baogu_echo_sink`，实际声音仍从开启时的扬声器播放。
+现有播放流会迁移；手动绑定其他输出设备的应用需要在声音设置中选用此虚拟输出，
+否则这部分播放声音无法作为消除参考。关闭时只在默认设备仍是本工具虚拟设备时恢复默认值，
+保留期间手动选择的其他设备。虚拟麦克风消失后，输入法下次录音会恢复选择物理麦克风。
+
+此开关只对当前音频服务会话有效，重启电脑或音频服务后需重新执行 `on`。
+更换麦克风或扬声器后，先 `off` 再 `on`，以绑定新设备。
+依赖 `pactl` 和服务端 WebRTC AEC 支持；模块加载失败会显示错误。
+如出现播放或识别异常，可执行 `./baogu-aec off` 恢复。
+
+验收时分别测试：仅视频播放（不应输入视频台词）、仅自己说话、双方同时说话。
+音量、房间回声和设备延迟会影响效果，软件路由验证不能代替真人测试。

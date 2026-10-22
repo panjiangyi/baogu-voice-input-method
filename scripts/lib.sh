@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib.sh - 共享配置与辅助函数（VoiceIME POC）
+# lib.sh - 共享配置与辅助函数（苞谷输入法 POC）
 set -uo pipefail
 
 # ---------- 路径 ----------

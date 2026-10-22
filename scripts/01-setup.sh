@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# 01-setup.sh - VoiceIME POC 环境准备（一次性）
+# 01-setup.sh - 苞谷输入法 POC 环境准备（一次性）
 # 用法: bash scripts/01-setup.sh
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
-echo "========== VoiceIME POC - 环境准备 =========="
+echo "========== 苞谷输入法 POC - 环境准备 =========="
 echo "POC 目录: $POC_ROOT"
 echo ""
 

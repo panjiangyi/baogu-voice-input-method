@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -u
+source "$(cd -- "$(dirname -- "$0")" && pwd)/baogu-lib.sh"
+pid="$(baogu_pid 2>/dev/null || true)"
+service_env="$(systemctl --user show "$UNIT" -p Environment --value 2>/dev/null || true)"
+engine="${BAOGU_ENGINE:-sherpa}"
+llm_enabled="${BAOGU_LLM_ENABLED:-0}"
+llm_disabled="${BAOGU_LLM_DISABLED:-0}"
+llm_mode="${BAOGU_LLM_MODE:-punctuation}"
+llm_timeout="${BAOGU_LLM_TIMEOUT:-15.0}"
+deepseek_model="${DEEPSEEK_MODEL:-deepseek-v4-flash}"
+output_mode="${BAOGU_OUTPUT_MODE:-preedit}"
+final_enabled="${BAOGU_FINAL_ENABLED:-1}"
+final_wait="${BAOGU_FINAL_MAX_WAIT:-1.2}"
+final_audio="${BAOGU_FINAL_MAX_AUDIO_SEC:-10.0}"
+punctuation_enabled="${BAOGU_PUNCTUATION_ENABLED:-1}"
+ask_enabled="${BAOGU_ASK_ENABLED:-1}"
+ask_keycode="${BAOGU_ASK_KEYCODE:-38}"
+ask_modifier="${BAOGU_ASK_MODIFIER_KEYCODE:-64}"
+for setting in $service_env; do
+  case "$setting" in
+    BAOGU_ENGINE=*) engine="${setting#*=}" ;;
+    BAOGU_LLM_ENABLED=*) llm_enabled="${setting#*=}" ;;
+    BAOGU_LLM_DISABLED=*) llm_disabled="${setting#*=}" ;;
+    BAOGU_LLM_MODE=*) llm_mode="${setting#*=}" ;;
+    BAOGU_LLM_TIMEOUT=*) llm_timeout="${setting#*=}" ;;
+    DEEPSEEK_MODEL=*) deepseek_model="${setting#*=}" ;;
+    BAOGU_OUTPUT_MODE=*) output_mode="${setting#*=}" ;;
+    BAOGU_FINAL_ENABLED=*) final_enabled="${setting#*=}" ;;
+    BAOGU_FINAL_MAX_WAIT=*) final_wait="${setting#*=}" ;;
+    BAOGU_FINAL_MAX_AUDIO_SEC=*) final_audio="${setting#*=}" ;;
+    BAOGU_PUNCTUATION_ENABLED=*) punctuation_enabled="${setting#*=}" ;;
+    BAOGU_ASK_ENABLED=*) ask_enabled="${setting#*=}" ;;
+    BAOGU_ASK_KEYCODE=*) ask_keycode="${setting#*=}" ;;
+    BAOGU_ASK_MODIFIER_KEYCODE=*) ask_modifier="${setting#*=}" ;;
+  esac
+done
+override="${XDG_CONFIG_HOME:-$HOME/.config}/baogu/deepseek-enabled.txt"
+if [ -f "$override" ]; then
+  case "$(cat "$override")" in
+    0) llm_enabled=0 ;;
+    1) llm_enabled=1 ;;
+  esac
+fi
+echo "daemon:    $(systemctl --user is-active "$UNIT" 2>/dev/null || echo unknown)"
+echo "overlay:   $(systemctl --user is-active baogu-overlay.service 2>/dev/null || echo unknown)"
+echo "engine:    $engine output=$output_mode"
+echo "final:     enabled=$final_enabled max_wait=${final_wait}s max_audio=${final_audio}s punctuation=$punctuation_enabled"
+echo "llm:       enabled=$llm_enabled kill_switch=$llm_disabled mode=$llm_mode timeout=${llm_timeout}s"
+echo "ask:       enabled=$ask_enabled key=$ask_modifier+$ask_keycode (left Alt + A)"
+echo "state:     $(baogu_state)  (pid ${pid:--})"
+echo "instances: $(baogu_pids | wc -l)"
+if busctl --user status org.baogu.Input >/dev/null 2>&1; then
+  echo "output:    Fcitx5 native (ready)"
+else
+  echo "output:    Fcitx5 native (bridge unavailable)"
+fi
+if [ -s "$ROOT/.env" ] && grep -q '^DEEPSEEK_API_KEY=' "$ROOT/.env"; then
+  echo "corrector: direct DeepSeek API (configured; model=$deepseek_model)"
+else
+  echo "corrector: direct DeepSeek API (missing .env credentials)"
+fi
+echo "mic:       $("$ROOT/baogu-mic")"
+"$ROOT/baogu-aec" status

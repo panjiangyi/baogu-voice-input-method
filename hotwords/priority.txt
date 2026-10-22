@@ -5,6 +5,8 @@
 Git
 GitHub
 GitHub Actions
+苞谷输入法
+Baogu IME
 GitLab
 pull request
 PR
@@ -96,8 +98,8 @@ Fcitx5
 FinalRecognizer
 updateSession
 user_id
-VOICEIME_ENABLE_LLM
-VOICEIME_LLM_ENABLED
+BAOGU_ENABLE_LLM
+BAOGU_LLM_ENABLED
 
 Stripe
 Stripe Checkout

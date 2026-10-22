@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start a VoiceIME component only after the user's X11/Xwayland session is
+# Start a Baogu IME component only after the user's X11/Xwayland session is
 # usable.  The user systemd manager may reach default.target before GDM has
 # created the display socket or imported DISPLAY/XAUTHORITY.
 set -euo pipefail
@@ -31,14 +31,14 @@ while :; do
         xinput list --id-only "Virtual core XTEST keyboard" >/dev/null 2>&1; then
         export DISPLAY="$display"
         export XAUTHORITY="$authority"
-        echo "[voiceime-session] X11 ready on $DISPLAY" >&2
+        echo "[baogu-session] X11 ready on $DISPLAY" >&2
         exec "$@"
       fi
     done
   done
 
   if (( attempt % 10 == 0 )); then
-    echo "[voiceime-session] waiting for the graphical session" >&2
+    echo "[baogu-session] waiting for the graphical session" >&2
   fi
   attempt=$((attempt + 1))
   sleep 1

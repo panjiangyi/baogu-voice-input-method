@@ -18,10 +18,10 @@ jobs:
             dbus-x11
       - name: Python syntax
         run: |
-          python3 -m py_compile             voiceime-engine voiceime-ptt voiceime-ask voiceime-overlay             voiceime_glossary.py voiceime_selection.py voiceime_settings.py             scripts/08-offline-suite.py scripts/20-build-glossary.py             tests/test_voiceime.py tests/test_engine_logic.py             tests/test_llm_corrector.py tests/test_benchmark.py             tests/test_glossary.py tests/test_glossary_corrector.py tests/test_selection.py     tests/test_ask.py             tests/native_bridge.py
+          python3 -m py_compile             baogu-engine baogu-ptt baogu-ask baogu-overlay             baogu_glossary.py baogu_selection.py baogu_settings.py             scripts/08-offline-suite.py scripts/20-build-glossary.py             tests/test_baogu.py tests/test_engine_logic.py             tests/test_llm_corrector.py tests/test_benchmark.py             tests/test_glossary.py tests/test_glossary_corrector.py tests/test_selection.py     tests/test_ask.py             tests/native_bridge.py
       - name: Shell syntax
         run: |
-          bash -n voiceime-lib.sh voiceime-begin voiceime-end voiceime-mic voiceime-reset voiceime-status voiceime-hotwords
+          bash -n baogu-lib.sh baogu-begin baogu-end baogu-mic baogu-reset baogu-status baogu-hotwords
           bash -n scripts/*.sh native/*.sh
       - name: Build native Fcitx bridge
         run: bash native/build.sh
@@ -34,7 +34,7 @@ jobs:
             fcitx5 -d
             ready=0
             for i in $(seq 1 50); do
-              if busctl --user status org.voiceime.Input >/dev/null 2>&1 \
+              if busctl --user status org.baogu.Input >/dev/null 2>&1 \
                 && busctl --user status org.fcitx.Fcitx5 >/dev/null 2>&1; then
                 ready=1
                 break

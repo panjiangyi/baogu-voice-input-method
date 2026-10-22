@@ -1,17 +1,17 @@
 ---
-title: "VoiceIME：Linux 上唯一免费的中文 / 中英混合语音输入法，对标豆包 80% 体验"
+title: "苞谷输入法：Linux 上唯一免费的中文 / 中英混合语音输入法，对标豆包 80% 体验"
 date: 2026-09-22
 tags: [voice-input, linux, asr, fcitx5, side-project, free]
 summary: Linux 上按住右 Alt 就能说话、中文带标点直接上屏。30 条真人样本 90.66% 内容准确率。一条 deploy.sh 完成安装。永久免费、开源。
-project_url: https://voiceime.mogician.me
-github_url: https://github.com/panjiangyi/laopan-voice-input-method
+project_url: https://baogu.mogician.me
+github_url: https://github.com/panjiangyi/baogu-voice-input-method
 ---
 
-# VoiceIME：Linux 上唯一免费的中文 / 中英混合语音输入法，对标豆包 80% 体验
+# 苞谷输入法：Linux 上唯一免费的中文 / 中英混合语音输入法，对标豆包 80% 体验
 
 ![status](https://img.shields.io/badge/status-alpha-9fe870) ![accuracy](https://img.shields.io/badge/30%20samples-90.66%25-9fe870) ![ubuntu](https://img.shields.io/badge/ubuntu-24.04-E95420) ![price](https://img.shields.io/badge/price-free-9fe870)
 
-> 项目主页：[voiceime.mogician.me](https://voiceime.mogician.me) · 源码：[github.com/panjiangyi/laopan-voice-input-method](https://github.com/panjiangyi/laopan-voice-input-method) · 一个我每天都在用的 side project。
+> 项目主页：[baogu.mogician.me](https://baogu.mogician.me) · 源码：[github.com/panjiangyi/baogu-voice-input-method](https://github.com/panjiangyi/baogu-voice-input-method) · 一个我每天都在用的 side project。
 
 ## 一句话
 
@@ -27,7 +27,7 @@ github_url: https://github.com/panjiangyi/laopan-voice-input-method
 2. **typeless 是收费的**。typeless 本身是个好产品，但订阅制 + macOS only，Linux 用户根本用不上。
 3. **豆包输入法没有 Linux 版**。豆包在中文识别上是体验天花板之一，但官方至今没有 Linux 客户端。
 
-VoiceIME 的定位很直白：**把 typeless / 豆包那种"按住说话直接上屏"的体验，免费做到 Linux 上**。当前在我自己的真人样本上，内容准确率是 90.66%（30 条未公开样本）——距离豆包的体验还有距离，但作为免费的 Linux 替代，已经能日用。
+苞谷输入法的定位很直白：**把 typeless / 豆包那种"按住说话直接上屏"的体验，免费做到 Linux 上**。当前在我自己的真人样本上，内容准确率是 90.66%（30 条未公开样本）——距离豆包的体验还有距离，但作为免费的 Linux 替代，已经能日用。
 
 ## 为什么免费
 
@@ -38,7 +38,7 @@ VoiceIME 的定位很直白：**把 typeless / 豆包那种"按住说话直接�
 - 我做这件事的成本是周末时间 + 一台麦克风好的开发机。
 - 收费解决不了"Linux 用户用不上语音输入法"这件事——只会让一部分人用不上。
 
-**typeless 的免费替代，就是 VoiceIME 的目标。** 开源不是慈善，是商业模型决定不了的"长尾平台用户"问题，开源能解决。
+**typeless 的免费替代，就是苞谷输入法的目标。** 开源不是慈善，是商业模型决定不了的"长尾平台用户"问题，开源能解决。
 
 ## 怎么做到的：一条管线
 
@@ -51,7 +51,7 @@ Right Alt down
 parec 16k PCM ─────► Sherpa streaming Paraformer（中英）
                             │ partial
                             ▼
-                  voiceime-ptt supervisor
+                  baogu-ptt supervisor
                   · 100ms 内恢复 idle
                   · 每 20ms 拉一次音频，避免积压
                   · 持久 Gio D-Bus 直连 Fcitx5（不再每 partial 启 busctl）
@@ -66,7 +66,7 @@ parec 16k PCM ─────► Sherpa streaming Paraformer（中英）
                             ▼
                   当前焦点输入框 ← 真正上屏
 
-Optional: 松键后接 FireRedASR2 二遍纠错（默认关闭，需 VOICEIME_FINAL_ENABLED=1）
+Optional: 松键后接 FireRedASR2 二遍纠错（默认关闭，需 BAOGU_FINAL_ENABLED=1）
 ```
 
 几个有意思的设计选择：
@@ -93,9 +93,9 @@ Optional: 松键后接 FireRedASR2 二遍纠错（默认关闭，需 VOICEIME_FI
 - **FireRedASR2 在真人样本上反而更差**（82.71% vs 90.66%）。这跟我之前的假设相反——更"大"的离线模型不是必胜。最终识别里 FireRed 更倾向把"嗯"扩展成完整句子，结果反而错了。这是个让我记住的教训：**评测必须用真人数据，不能用论文 benchmark 替代表决**。
 - **最终验收需要另录未参与调优的样本做盲测**。当前这 30 条参与了调优，本质是开发集。我会在未来 1-2 周内重新录 50 条未参与调优的样本做最终 A/B——在那之前，"对标豆包 80% 体验"是开发机上的体感估计，不是跨数据集的硬指标。
 
-## 对比一下：免费 + Linux 这个交叉格里只有 VoiceIME
+## 对比一下：免费 + Linux 这个交叉格里只有苞谷输入法
 
-|  | VoiceIME | typeless | 豆包输入法 | nerd-dictation |
+|  | 苞谷输入法 | typeless | 豆包输入法 | nerd-dictation |
 |---|---|---|---|---|
 | 价格 | **永久免费** | 订阅制 | 免费 | 免费 |
 | Linux 桌面 | **原生支持** | — | — | 支持 |
@@ -104,7 +104,7 @@ Optional: 松键后接 FireRedASR2 二遍纠错（默认关闭，需 VOICEIME_FI
 | 输入法上屏 | Fcitx5 原生 | 系统输入法 | 系统输入法 | xdotool 模拟 |
 | 开源 | **是** | 否 | 否 | 是 |
 
-**结论**：在"价格 + Linux 支持"两格的交叉格里，目前只有 VoiceIME 一个选项。typeless 不出 Linux，豆包没有 Linux 版，nerd-dictation 不支持中文。
+**结论**：在"价格 + Linux 支持"两格的交叉格里，目前只有苞谷输入法一个选项。typeless 不出 Linux，豆包没有 Linux 版，nerd-dictation 不支持中文。
 
 ## 为什么不用 xdotool / 剪贴板
 
@@ -143,7 +143,7 @@ bash scripts/10-install-service.sh
 ./deploy.sh
 ```
 
-默认开启 AI 标点纠错；想关闭：`VOICEIME_LLM_ENABLED=0 ./deploy.sh`。
+默认开启 AI 标点纠错；想关闭：`BAOGU_LLM_ENABLED=0 ./deploy.sh`。
 
 ## 现在的边界
 
@@ -153,7 +153,7 @@ bash scripts/10-install-service.sh
 
 ## 你来试，然后告诉我数字
 
-VoiceIME 现在的状态是"日用级 alpha"。它已经能替代我大部分中文 / 中英混合输入，但还差 Wayland 适配、差未参与调优的盲测集、差个人热词。
+苞谷输入法现在的状态是"日用级 alpha"。它已经能替代我大部分中文 / 中英混合输入，但还差 Wayland 适配、差未参与调优的盲测集、差个人热词。
 
 **特别想知道**：
 
@@ -161,12 +161,12 @@ VoiceIME 现在的状态是"日用级 alpha"。它已经能替代我大部分中
 - 中英混输在你的工作流里占比多少？（我的 > 30%，所以中英混输好是 day-1 需求）
 - 你最想要但现在没有的功能是什么？（Wayland？热词？aggressive 纠错？）
 
-如果你是 Linux 上日常需要中文 / 中英混合输入的人，欢迎来 [voiceime.mogician.me](https://voiceime.mogician.me) 看看，或者直接装：
+如果你是 Linux 上日常需要中文 / 中英混合输入的人，欢迎来 [baogu.mogician.me](https://baogu.mogician.me) 看看，或者直接装：
 
 ```bash
-git clone https://github.com/panjiangyi/laopan-voice-input-method
-cd laopan-voice-input-method
+git clone https://github.com/panjiangyi/baogu-voice-input-method
+cd baogu-voice-input-method
 ./deploy.sh
 ```
 
-源码：[github.com/panjiangyi/laopan-voice-input-method](https://github.com/panjiangyi/laopan-voice-input-method) · 主页：[voiceime.mogician.me](https://voiceime.mogician.me)
+源码：[github.com/panjiangyi/baogu-voice-input-method](https://github.com/panjiangyi/baogu-voice-input-method) · 主页：[baogu.mogician.me](https://baogu.mogician.me)

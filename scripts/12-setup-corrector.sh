@@ -30,4 +30,4 @@ fi
 
 printf '\nNext:\n'
 printf '  bash scripts/13-install-corrector-service.sh\n'
-printf '  ./build-and-start.sh   # restart voiceime-ptt to pick up the wrapper\n'
+printf '  ./build-and-start.sh   # restart baogu-ptt to pick up the wrapper\n'

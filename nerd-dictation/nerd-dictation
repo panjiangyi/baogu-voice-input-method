@@ -297,14 +297,14 @@ def simulate_typing_with_fcitx(delete_prev_chars: int, text: str) -> None:
     else:
         method = ["Update", "is", str(delete_prev_chars), text]
     result = subprocess.check_output(
-        ["busctl", "--user", "--timeout=2", "call", "org.voiceime.Input",
-         "/org/voiceime/Input", "org.voiceime.Input1", *method],
+        ["busctl", "--user", "--timeout=2", "call", "org.baogu.Input",
+         "/org/baogu/Input", "org.baogu.Input1", *method],
         text=True, timeout=3,
     ).strip()
     if result != "b true":
-        raise RuntimeError("VoiceIME: no focused Fcitx input context, or focus changed; stopping input")
-    if os.environ.get("VOICEIME_TRACE") and delete_prev_chars >= 0:
-        sys.stderr.write("[voiceime] native output: delete=%d chars=%d duration=%.1fms\n" %
+        raise RuntimeError("Baogu IME: no focused Fcitx input context, or focus changed; stopping input")
+    if os.environ.get("BAOGU_TRACE") and delete_prev_chars >= 0:
+        sys.stderr.write("[baogu] native output: delete=%d chars=%d duration=%.1fms\n" %
                          (delete_prev_chars, len(text), (time.monotonic() - started) * 1000))
 
 
@@ -1851,7 +1851,7 @@ def argparse_create_begin(subparsers: "argparse._SubParsersAction[argparse.Argum
             "Program used to simulate keystrokes (default).\n"
             "\n"
             "- ``XDOTOOL`` Compatible with the X server only (default).\n"
-            "- ``FCITX`` Native Unicode delivery using the VoiceIME Fcitx5 addon.\n"
+            "- ``FCITX`` Native Unicode delivery using the Baogu IME Fcitx5 addon.\n"
             "- ``DOTOOL`` Compatible with all Linux distributions and Wayland.\n"
             "- ``DOTOOLC`` Same as DOTOOL but for use with the `dotoold` daemon.\n"
             "- ``YDOTOOL`` Compatible with all Linux distributions and Wayland but requires some setup.\n"

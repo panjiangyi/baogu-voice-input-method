@@ -1,6 +1,6 @@
-# VoiceIME POC 报告 — Ubuntu 中文语音直接输入验证
+# 苞谷输入法 POC 报告 — Ubuntu 中文语音直接输入验证
 
-> 项目代号：VoiceIME POC ｜ 报告版本 v0.1 ｜ 日期：2026-09-08
+> 项目代号：苞谷输入法 POC ｜ 报告版本 v0.1 ｜ 日期：2026-09-08
 > 状态：**POC 执行完成（自动化验证部分）**
 
 ---
@@ -73,7 +73,7 @@
 - **根因**：PipeWire 默认输入源会被切换（板载 ALC257 ↔ USB Jieli），若说话用的麦克风与系统录制源不一致，识别结果为空或乱码。
 - **修复**：固定使用 USB 麦克风（`alsa_input.usb-Jieli_...mono-fallback`），通过 `--pulse-device-name` 显式指定设备。
 - **验证**：真人语音 "今天的天气不错" → 识别出 "今天 的 天气 不错"（核心词全中）；修复前同场景识别为 "gejb"/空。
-- 影响文件：`scripts/lib.sh`（2 处 begin 调用）、`scripts/04-latency-suite.sh`、`voiceime-begin`。
+- 影响文件：`scripts/lib.sh`（2 处 begin 调用）、`scripts/04-latency-suite.sh`、`baogu-begin`。
 
 **Progressive 模式（边说边输入）验证**：
 - nerd-dictation 原生支持：去除 `--defer-output` 即启用 progressive（识别部分结果实时注入焦点窗口）。
@@ -97,9 +97,9 @@
 ### 3.4 快捷键 ✅ AC-103
 
 - GNOME 自定义快捷键已配置（gsettings，免 sudo）：
-  - `Ctrl+Alt+V` → 开始听写（voiceime-begin）
-  - `Ctrl+Alt+B` → 结束听写（voiceime-end）
-- 已验证：gsettings 配置正确写入 dconf；voiceime-begin/end 包装脚本直接执行可用。
+  - `Ctrl+Alt+V` → 开始听写（baogu-begin）
+  - `Ctrl+Alt+B` → 结束听写（baogu-end）
+- 已验证：gsettings 配置正确写入 dconf；baogu-begin/end 包装脚本直接执行可用。
 - 注意：GNOME 的 gsd-media-keys 对 XTEST 合成按键事件有安全过滤（自动化模拟未触发），**真实物理按键不受影响**；真人测试时请用实际按键验证（见 §7）。
 
 ---
@@ -160,9 +160,9 @@ bash scripts/06-app-compat.sh
 
 手动使用：
 ```bash
-/path/to/voiceime-begin   # 或快捷键 Ctrl+Alt+V
+/path/to/baogu-begin   # 或快捷键 Ctrl+Alt+V
 # 说话...
-/path/to/voiceime-end     # 或快捷键 Ctrl+Alt+B
+/path/to/baogu-end     # 或快捷键 Ctrl+Alt+B
 ```
 
 ---

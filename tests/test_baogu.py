@@ -9,11 +9,13 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-PTT = runpy.run_path(str(ROOT / "voiceime-ptt"))
+PTT = runpy.run_path(str(ROOT / "baogu-ptt"))
 ND = runpy.run_path(str(ROOT / "nerd-dictation/nerd-dictation"))
+GLOSSARY = runpy.run_path(str(ROOT / "baogu_glossary.py"))
 
 
 class KeyTests(unittest.TestCase):
@@ -44,7 +46,7 @@ class KeyTests(unittest.TestCase):
 
 
 class AskShortcutTests(unittest.TestCase):
-    def test_left_alt_slash_press_and_release(self):
+    def test_left_alt_a_press_and_release(self):
         shortcut = PTT["AskShortcut"]()
         self.assertIsNone(shortcut.feed("RawKeyPress", 38))
         self.assertIsNone(shortcut.feed("RawKeyPress", 64))
@@ -62,6 +64,110 @@ class AskShortcutTests(unittest.TestCase):
         self.assertIsNone(shortcut.feed("RawKeyPress", 38))
         self.assertEqual(shortcut.feed("RawKeyRelease", 64), "release")
         self.assertIsNone(shortcut.feed("RawKeyRelease", 64))
+
+    def test_extra_modifiers_do_not_trigger_ask(self):
+        for modifier in (37, 105, 50, 62, 108, 133, 134, 92):
+            for order in ((modifier, 64), (64, modifier)):
+                with self.subTest(modifier=modifier, order=order):
+                    shortcut = PTT["AskShortcut"]()
+                    for key in order:
+                        self.assertIsNone(shortcut.feed("RawKeyPress", key))
+                    self.assertIsNone(shortcut.feed("RawKeyPress", 38))
+                    self.assertIsNone(shortcut.feed("RawKeyRelease", modifier))
+                    self.assertIsNone(shortcut.feed("RawKeyPress", 38))
+                    self.assertIsNone(shortcut.feed("RawKeyRelease", 38))
+                    self.assertEqual(shortcut.feed("RawKeyPress", 38), "press")
+                    self.assertEqual(shortcut.feed("RawKeyRelease", 38), "release")
+
+
+class HotwordShortcutTests(unittest.TestCase):
+    def test_default_hotword_keycode_matches_the_live_x_keymap(self):
+        # A wrong default fails silently: the key is read as something else
+        # and the combo never fires. Pin it to this machine's map.
+        self.assertEqual(PTT["HOTWORD_KEYCODE"], 25)  # 'w' here, not 17
+        self.assertEqual(PTT["HOTWORD_MODIFIER"], 64)  # left Alt
+
+    def test_left_alt_w_fires_once_per_press(self):
+        shortcut = PTT["AskShortcut"](PTT["HOTWORD_KEYCODE"], PTT["HOTWORD_MODIFIER"])
+        self.assertIsNone(shortcut.feed("RawKeyPress", 64))
+        self.assertEqual(shortcut.feed("RawKeyPress", 25), "press")
+        self.assertIsNone(shortcut.feed("RawKeyPress", 25))
+        self.assertEqual(shortcut.feed("RawKeyRelease", 25), "release")
+
+    def test_hotword_combo_does_not_disturb_the_ask_combo(self):
+        hotword = PTT["AskShortcut"](25, 64)
+        ask = PTT["AskShortcut"]()
+        for key in (64, 25):
+            self.assertIsNone(ask.feed("RawKeyPress", key))
+        hotword.feed("RawKeyPress", 25)
+        self.assertEqual(ask.feed("RawKeyPress", 38), "press")
+
+    def test_right_alt_dictation_key_suppresses_the_hotword_combo(self):
+        shortcut = PTT["AskShortcut"](25, 64)
+        self.assertIsNone(shortcut.feed("RawKeyPress", 64))
+        self.assertIsNone(shortcut.feed("RawKeyPress", 108))
+        self.assertIsNone(shortcut.feed("RawKeyPress", 25))
+
+
+class HotwordAddTests(unittest.TestCase):
+    def _run_add(self, selection, clipboard=""):
+        calls = {"run": None, "notified": []}
+
+        class Result:
+            returncode = 0
+            stdout = "added: Stripe Checkout\n"
+            stderr = ""
+
+        def fake_run(cmd, **kwargs):
+            calls["run"] = (cmd, kwargs)
+            return Result()
+
+        def fake_notify(summary, body=""):
+            calls["notified"].append((summary, body))
+
+        globals_ = PTT["add_hotword_from_selection"].__globals__
+        with patch.dict(globals_, capture_selection=lambda: selection,
+                        capture_clipboard=lambda: clipboard,
+                        subprocess=unittest.mock.Mock(run=fake_run),
+                        notify=fake_notify):
+            PTT["add_hotword_from_selection"]()
+        return calls
+
+    def test_selected_term_is_added_without_restarting_the_daemon(self):
+        calls = self._run_add("  Stripe Checkout  \nnoise")
+        cmd, kwargs = calls["run"]
+        self.assertEqual(cmd, [PTT["HOTWORD_SCRIPT"], "add", "Stripe Checkout"])
+        self.assertEqual(kwargs["env"]["BAOGU_HOTWORDS_NO_RESTART"], "1")
+        self.assertEqual(calls["notified"], [("已加入常用词（选区）", "Stripe Checkout")])
+
+    def test_clipboard_is_the_fallback_source(self):
+        calls = self._run_add("", "Zombee Corp")
+        self.assertEqual(calls["run"][0], [PTT["HOTWORD_SCRIPT"], "add", "Zombee Corp"])
+        self.assertEqual(calls["notified"], [("已加入常用词（剪贴板）", "Zombee Corp")])
+
+    def test_nothing_selected_only_notifies_and_never_adds(self):
+        calls = self._run_add("", "")
+        self.assertIsNone(calls["run"])
+        self.assertEqual(calls["notified"], [("没有可添加的常用词", "请先选中或复制这个词")])
+
+
+class HotwordTextTests(unittest.TestCase):
+    def test_selection_is_reduced_to_one_bounded_term(self):
+        normalize = PTT["normalize_hotword"]
+        self.assertEqual(normalize("  Stripe Checkout  \nsecond line"), "Stripe Checkout")
+        self.assertEqual(normalize("\n\n  \n"), "")
+        self.assertEqual(normalize(""), "")
+        self.assertEqual(normalize(None), "")
+        self.assertEqual(len(normalize("x" * 500)), 80)
+
+    def test_hotword_script_runs_without_restarting_the_daemon(self):
+        script = ROOT / "baogu-hotwords"
+        self.assertIn("BAOGU_HOTWORDS_NO_RESTART", script.read_text(encoding="utf-8"))
+
+    def test_glossary_reload_is_disabled_for_injected_vocabulary(self):
+        corrector = GLOSSARY["GlossaryCorrector"](terms=["Acme"], exact_terms=["Acme"])
+        self.assertFalse(corrector._reloadable)
+        self.assertEqual(corrector.correct("Acme rocks"), "Acme rocks")
 
 
 class StreamingTests(unittest.TestCase):

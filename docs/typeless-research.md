@@ -1,4 +1,4 @@
-# Typeless 客户端调研与 VoiceIME 改进
+# Typeless 客户端调研与苞谷输入法改进
 
 日期：2026-10-16。目标：本机 Typeless 2.2.0 Linux 发行包。
 
@@ -17,7 +17,7 @@
 
 ## 已观察到的实现与迁移决定
 
-| Typeless 发行包证据 | 能确认什么 | VoiceIME 采用方式 |
+| Typeless 发行包证据 | 能确认什么 | 苞谷输入法采用方式 |
 |---|---|---|
 | `Clr6HqQG.js`：`/ws/rt_voice_flow`、音频二进制块、`set_audio_chunk_info` | 存在流式上传协议 | 保留本地流式 ASR，避免为模仿通信架构引入音频上传 |
 | 同文件：`transcription`、`refine_completed`、`refined_text` | 客户端区分转写和整理结果 | 新增显式 `dictation` 口语整理模式，沿用预编辑后一次提交 |
@@ -42,11 +42,11 @@
 4. 修复原先固定 256 tokens：按输入长度分配 512–8192 tokens，明确的 `max_tokens`
    截断返回完整原文。正常纠错日志改为字符计数，不记录输入、输出内容片段。
 5. 部署脚本支持 `dictation`、上下文开关与等待预算。默认纠错模式不变；后续按用户要求，
-   上下文默认开启，`VOICEIME_CONTEXT_ENABLED=0` 可关闭，云端纠错关闭时不发送。
+   上下文默认开启，`BAOGU_CONTEXT_ENABLED=0` 可关闭，云端纠错关闭时不发送。
 6. 新增「选中文字提问」：左 Alt + `a` 为提问热键（右 Alt 仍是听写键）；优先读取 X11
    PRIMARY 选区，不导出 PRIMARY 的应用回退模拟 Ctrl+C 并保存/还原剪贴板。提问复用本地
-   流式识别，**不写入应用正文**；回答经同一 AI 接口返回，显示在独立窗口（`voiceime-ask`）。
-   提问与纠错开关独立，`VOICEIME_LLM_DISABLED=1` 同时禁止两者。
+   流式识别，**不写入应用正文**；回答经同一 AI 接口返回，显示在独立窗口（`baogu-ask`）。
+   提问与纠错开关独立，`BAOGU_LLM_DISABLED=1` 同时禁止两者。
 
 ## 验证边界
 

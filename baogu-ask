@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""VoiceIME selection-question window.
+"""Baogu IME selection-question window.
 
-Spawned by voiceime-ptt when the user presses Alt+A with text selected. It
+Spawned by baogu-ptt when the user presses Alt+A with text selected. It
 shows the recognised question and then the AI answer read from the ask state
 file. It is a normal, focusable window so the answer can be selected, copied
 and dismissed with Escape; it does not steal focus until the answer is ready.
@@ -21,8 +21,8 @@ gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
-ASK_STATE = RUNTIME / "voiceime-ask.state"
-LOCK = RUNTIME / "voiceime-ask.lock"
+ASK_STATE = RUNTIME / "baogu-ask.state"
+LOCK = RUNTIME / "baogu-ask.lock"
 POLL_MS = 200
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-ENGINE = runpy.run_path(str(ROOT / "voiceime-engine"))
+ENGINE = runpy.run_path(str(ROOT / "baogu-engine"))
 # runpy returns a copy, so patch the shared function globals, not ENGINE itself.
 GLOBALS = ENGINE["take_ask_request"].__globals__
 
@@ -16,7 +16,7 @@ GLOBALS = ENGINE["take_ask_request"].__globals__
 class AskRequestTests(unittest.TestCase):
     def test_request_is_read_then_consumed(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "voiceime-ask.request"
+            path = Path(directory) / "baogu-ask.request"
             path.write_text(json.dumps({"selection": "选中文字"}), encoding="utf-8")
             with patch.dict(GLOBALS, ASK_REQUEST_FILE=path):
                 self.assertEqual(ENGINE["take_ask_request"](), {"selection": "选中文字"})
@@ -36,7 +36,7 @@ class AskRequestTests(unittest.TestCase):
 class AskStateTests(unittest.TestCase):
     def test_state_write_is_atomic_json(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "voiceime-ask.state"
+            path = Path(directory) / "baogu-ask.state"
             with patch.dict(GLOBALS, ASK_STATE_FILE=path):
                 ENGINE["write_ask_state"]("s1", "done", question="问", answer="答")
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -45,7 +45,7 @@ class AskStateTests(unittest.TestCase):
             self.assertEqual(data["question"], "问")
             self.assertEqual(data["answer"], "答")
             self.assertTrue(data["time"] > 0)
-            self.assertFalse((Path(directory) / "voiceime-ask.state.tmp").exists())
+            self.assertFalse((Path(directory) / "baogu-ask.state.tmp").exists())
 
     def test_run_ask_utterance_publishes_answer_without_fcitx(self):
         globals_ = ENGINE["run_ask_utterance"].__globals__
@@ -98,7 +98,7 @@ class AskStateTests(unittest.TestCase):
             POLLIN=1, POLLHUP=2, POLLERR=4, poll=lambda: FakePoll()
         )
         with tempfile.TemporaryDirectory() as directory:
-            state = Path(directory) / "voiceime-ask.state"
+            state = Path(directory) / "baogu-ask.state"
             with patch.dict(globals_, {
                 "ASK_STATE_FILE": state,
                 "STATE_FILE": Path(directory) / "engine.state",
@@ -133,6 +133,103 @@ class AskStateTests(unittest.TestCase):
         self.assertIn("超时", message(llm))
         llm.last_status = "failed"
         self.assertIn("重试", message(llm))
+
+
+class SilentPressTests(unittest.TestCase):
+    """Alt+A without speech explains the selected or clipboard text."""
+
+    def _run(self, request, spoken=""):
+        globals_ = ENGINE["run_ask_utterance"].__globals__
+        calls = {}
+
+        class FakePipe:
+            def fileno(self):
+                return 0
+
+        class FakeRecorder:
+            stdout = FakePipe()
+
+            def poll(self):
+                return None
+
+        class FakePoll:
+            def register(self, *_args):
+                pass
+
+            def poll(self, _timeout):
+                return []
+
+        class FakeAsr:
+            def create_stream(self):
+                return object()
+
+            def accept_pcm(self, *_args):
+                pass
+
+            def decode_ready(self, *_args):
+                pass
+
+            def text(self, _stream):
+                return spoken
+
+            def finalize(self, _stream):
+                return spoken
+
+        class FakeLLM:
+            enabled = True
+            last_status = "success"
+
+            def answer(self, question, selection):
+                calls["question"] = question
+                calls["selection"] = selection
+                return "这是解释结果。"
+
+        fake_select = types.SimpleNamespace(
+            POLLIN=1, POLLHUP=2, POLLERR=4, poll=lambda: FakePoll()
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "baogu-ask.state"
+            with patch.dict(globals_, {
+                "ASK_STATE_FILE": state,
+                "STATE_FILE": Path(directory) / "engine.state",
+                "start_recorder": lambda _mic: FakeRecorder(),
+                "stop_recorder": lambda _proc: b"",
+                "resolve_mic": lambda: "",
+                "select": fake_select,
+                "terminate": False,
+                "start_request": 5,
+                "stop_request": 5,
+                "RELEASE_SILENCE_SEC": 0.0,
+            }):
+                ENGINE["run_ask_utterance"](FakeAsr(), FakeLLM(), request, 5)
+            return json.loads(state.read_text(encoding="utf-8")), calls
+
+    def test_silence_explains_the_selection(self):
+        data, calls = self._run({"selection": "  idempotent  ", "clipboard": "别的内容"})
+        self.assertEqual(data["status"], "done")
+        self.assertEqual(calls["selection"], "idempotent")
+        self.assertEqual(calls["question"], ENGINE["ASK_EXPLAIN_QUESTION"])
+        self.assertIn("解释", calls["question"])
+        # The window shows the short label, not the long prompt text.
+        self.assertEqual(data["question"], ENGINE["ASK_EXPLAIN_LABEL"])
+
+    def test_silence_falls_back_to_the_clipboard(self):
+        data, calls = self._run({"selection": "", "clipboard": "ubiquitous"})
+        self.assertEqual(data["status"], "done")
+        self.assertEqual(calls["selection"], "ubiquitous")
+
+    def test_silence_without_any_text_is_an_error(self):
+        data, calls = self._run({"selection": "   ", "clipboard": ""})
+        self.assertEqual(data["status"], "error")
+        self.assertIn("剪贴板", data["error"])
+        self.assertEqual(calls, {})
+
+    def test_spoken_question_wins_over_the_clipboard(self):
+        data, calls = self._run(
+            {"selection": "", "clipboard": "剪贴板里的东西"}, spoken="这个怎么改"
+        )
+        self.assertEqual(calls["question"], "这个怎么改")
+        self.assertEqual(data["question"], "这个怎么改")
 
 
 if __name__ == "__main__":

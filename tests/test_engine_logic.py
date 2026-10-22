@@ -1,4 +1,4 @@
-"""Unit tests for the event-driven VoiceIME engine."""
+"""Unit tests for the event-driven Baogu IME engine."""
 import runpy
 from pathlib import Path
 import unittest
@@ -7,7 +7,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-ENGINE = runpy.run_path(str(ROOT / "voiceime-engine"))
+ENGINE = runpy.run_path(str(ROOT / "baogu-engine"))
 
 
 class FakeBridge:
@@ -140,7 +140,7 @@ class ReleaseTailTests(unittest.TestCase):
 
 class FinalRecognizerConfigTests(unittest.TestCase):
     def test_second_pass_can_be_explicitly_disabled(self):
-        with patch.dict("os.environ", {"VOICEIME_FINAL_ENABLED": "0"}, clear=True):
+        with patch.dict("os.environ", {"BAOGU_FINAL_ENABLED": "0"}, clear=True):
             recognizer = ENGINE["FinalRecognizer"]()
         self.assertIsNone(recognizer.recognizer)
         self.assertFalse(recognizer.enabled)

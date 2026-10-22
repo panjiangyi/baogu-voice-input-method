@@ -11,15 +11,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POC_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # 稳定的 begin/end 包装脚本（含 DISPLAY/PATH/LD_LIBRARY_PATH 环境）
-VOICEIME_BIN="$POC_ROOT/voiceime-begin"
-VOICEIME_END="$POC_ROOT/voiceime-end"
-for f in "$VOICEIME_BIN" "$VOICEIME_END"; do
+BAOGU_BIN="$POC_ROOT/baogu-begin"
+BAOGU_END="$POC_ROOT/baogu-end"
+for f in "$BAOGU_BIN" "$BAOGU_END"; do
     [ -x "$f" ] || { echo "[错误] 缺少 $f"; exit 1; }
 done
 
 # 通过 gsettings 配置自定义快捷键（无需 sudo，写入用户 dconf）
-custom_path="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/voiceime-begin/"
-custom_path_end="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/voiceime-end/"
+custom_path="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/baogu-begin/"
+custom_path_end="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/baogu-end/"
 
 existing="$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings)"
 echo "当前自定义快捷键: $existing"
@@ -30,18 +30,18 @@ if [ "$existing" = "@as []" ] || [ -z "$existing" ]; then
 fi
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$new_list"
 
-gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$custom_path" name 'VoiceIME Begin'
-gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$custom_path" command "$VOICEIME_BIN"
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$custom_path" name 'Baogu IME Begin'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$custom_path" command "$BAOGU_BIN"
 gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$custom_path" binding '<Control><Alt>v'
 
-gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$custom_path_end" name 'VoiceIME End'
-gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$custom_path_end" command "$VOICEIME_END"
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$custom_path_end" name 'Baogu IME End'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$custom_path_end" command "$BAOGU_END"
 gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$custom_path_end" binding '<Control><Alt>b'
 
 echo ""
 echo "快捷键已配置:"
-echo "  Ctrl+Alt+V  -> 开始听写 ($VOICEIME_BIN)"
-echo "  Ctrl+Alt+B  -> 结束听写 ($VOICEIME_END)"
+echo "  Ctrl+Alt+V  -> 开始听写 ($BAOGU_BIN)"
+echo "  Ctrl+Alt+B  -> 结束听写 ($BAOGU_END)"
 echo ""
 echo "验证: gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings"
 echo "说明: 若快捷键不生效，请在 设置 -> 键盘 -> 查看自定义快捷键 中检查。"

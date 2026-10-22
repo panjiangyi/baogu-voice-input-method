@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Evaluate the current VoiceIME ASR path with real character error rate.
+"""Evaluate the current Baogu IME ASR path with real character error rate.
 
 This replaces the legacy Vosk/set-overlap benchmark. It runs the same default
-recognition stack as voiceime-engine:
+recognition stack as baogu-engine:
   streaming Paraformer -> bounded offline final -> glossary -> punctuation
 
 Metrics:
@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-ENGINE = runpy.run_path(str(ROOT / "voiceime-engine"))
+ENGINE = runpy.run_path(str(ROOT / "baogu-engine"))
 SherpaRecognizer = ENGINE["SherpaRecognizer"]
 FinalRecognizer = ENGINE["FinalRecognizer"]
 
@@ -173,7 +173,7 @@ def main() -> int:
     if args.manifest and args.output == ROOT / "logs" / "current_asr_cer.tsv":
         args.output = args.manifest.parent / "asr-evaluation.tsv"
 
-    print("Loading current VoiceIME recognizers...")
+    print("Loading current Baogu IME recognizers...")
     asr = SherpaRecognizer()
     final_asr = FinalRecognizer()
     if args.require_final and final_asr.recognizer is None:

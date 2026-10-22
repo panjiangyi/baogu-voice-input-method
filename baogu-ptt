@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VoiceIME push-to-talk supervisor.
+"""Baogu IME push-to-talk supervisor.
 
 The Sherpa engine is a long-lived event-driven process:
   SIGUSR2 = start recording
@@ -9,8 +9,8 @@ Final FireRed/LLM refinement is asynchronous inside the engine, so release
 never blocks this xinput event loop and the next press can start immediately.
 """
 import json
-from voiceime_settings import CorrectionShortcut, toggle_llm
-from voiceime_selection import capture_selection
+from baogu_settings import CorrectionShortcut, toggle_llm
+from baogu_selection import capture_clipboard, capture_selection
 
 import errno
 import fcntl
@@ -23,22 +23,36 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.realpath(__file__))
-SHERPA_ENGINE = os.path.join(ROOT, "voiceime-engine")
+SHERPA_ENGINE = os.path.join(ROOT, "baogu-engine")
 ND = os.path.join(ROOT, "nerd-dictation", "nerd-dictation")
 VOSK_MODEL = os.path.join(ROOT, "models", "vosk-model-small-cn-0.22")
 RUNTIME = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
-COOKIE = os.path.join(RUNTIME, "voiceime-%d.cookie" % os.getuid())
-LOCK = os.path.join(RUNTIME, "voiceime-ptt.lock")
-READY = os.path.join(RUNTIME, "voiceime-engine.ready")
-STATE = os.path.join(RUNTIME, "voiceime-engine.state")
-ENGINE_MODE = os.environ.get("VOICEIME_ENGINE", "sherpa").lower()
-KEYCODE = int(os.environ.get("VOICEIME_PTT_KEYCODE", "108"))
-ASK_ENABLED = os.environ.get("VOICEIME_ASK_ENABLED", "1") == "1"
-ASK_KEYCODE = int(os.environ.get("VOICEIME_ASK_KEYCODE", "38"))  # 'a' on evdev
-ASK_MODIFIER = int(os.environ.get("VOICEIME_ASK_MODIFIER_KEYCODE", "64"))  # left Alt
-ASK_REQUEST = os.path.join(RUNTIME, "voiceime-ask.request")
-ASK_STATE = os.path.join(RUNTIME, "voiceime-ask.state")
-ASK_WINDOW = os.path.join(ROOT, "voiceime-ask")
+COOKIE = os.path.join(RUNTIME, "baogu-%d.cookie" % os.getuid())
+LOCK = os.path.join(RUNTIME, "baogu-ptt.lock")
+READY = os.path.join(RUNTIME, "baogu-engine.ready")
+STATE = os.path.join(RUNTIME, "baogu-engine.state")
+ENGINE_MODE = os.environ.get("BAOGU_ENGINE", "sherpa").lower()
+KEYCODE = int(os.environ.get("BAOGU_PTT_KEYCODE", "108"))
+ASK_ENABLED = os.environ.get("BAOGU_ASK_ENABLED", "1") == "1"
+ASK_KEYCODE = int(os.environ.get("BAOGU_ASK_KEYCODE", "38"))  # 'a' on evdev
+ASK_MODIFIER = int(os.environ.get("BAOGU_ASK_MODIFIER_KEYCODE", "64"))  # left Alt
+ASK_REQUEST = os.path.join(RUNTIME, "baogu-ask.request")
+ASK_STATE = os.path.join(RUNTIME, "baogu-ask.state")
+ASK_WINDOW = os.path.join(ROOT, "baogu-ask")
+# Left Alt + W teaches the currently selected text as a personal hotword, so
+# recurring names no longer need a hand-edited glossary file.
+HOTWORD_ENABLED = os.environ.get("BAOGU_HOTWORD_ENABLED", "1") == "1"
+# Keycodes come from the X keymap, not from a fixed table: this machine's map
+# is offset by 8 from the PC105 reference (a=38 here, not 30), the same offset
+# the ask shortcut's 38 already relies on. Check yours with:
+#   DISPLAY=:1 xmodmap -pke | grep ' = w '
+HOTWORD_KEYCODE = int(os.environ.get("BAOGU_HOTWORD_KEYCODE", "25"))  # 'w'
+HOTWORD_MODIFIER = int(os.environ.get(
+    "BAOGU_HOTWORD_MODIFIER_KEYCODE", "64"))  # left Alt
+HOTWORD_SCRIPT = os.path.join(ROOT, "baogu-hotwords")
+# A glossary entry is a term, not a paragraph: keep one line and bound the size
+# so a runaway paragraph selection cannot bloat every later correction.
+HOTWORD_MAX_CHARS = int(os.environ.get("BAOGU_HOTWORD_MAX_CHARS", "80"))
 
 EVENT_RE = re.compile(r"^EVENT type \d+ \((RawKeyPress|RawKeyRelease)\)")
 DETAIL_RE = re.compile(r"^\s+detail: (\d+)")
@@ -68,11 +82,15 @@ class KeyEvents:
 
 
 class AskShortcut:
-    """Left Alt + '/' as hold-to-talk for the selection question feature.
+    """Left Alt + a letter, hold-to-talk for the selection question feature.
 
     Right Alt is the dictation key, so ask uses left Alt to stay independent.
-    Pressing '/' while left Alt is held starts; releasing either key stops.
+    Pressing the letter with only left Alt held starts; releasing either key
+    stops. The same detector drives the hotword combo, which only uses "press".
     """
+
+    # X11 evdev keycodes: Shift, Ctrl, Alt, Super, and ISO Level3 Shift.
+    MODIFIERS = frozenset({50, 62, 37, 105, 64, 108, 133, 134, 92})
 
     def __init__(self, keycode=None, modifier=None):
         self.keycode = ASK_KEYCODE if keycode is None else keycode
@@ -85,7 +103,8 @@ class AskShortcut:
             repeated = keycode in self.pressed
             self.pressed.add(keycode)
             if (not self.active and keycode == self.keycode and not repeated
-                    and self.modifier in self.pressed):
+                    and self.modifier in self.pressed
+                    and not (self.pressed & (self.MODIFIERS - {self.modifier}))):
                 self.active = True
                 return "press"
             return None
@@ -98,15 +117,16 @@ class AskShortcut:
 
 
 def log(msg):
-    sys.stderr.write("[voiceime-ptt] %s\n" % msg)
+    sys.stderr.write("[baogu-ptt] %s\n" % msg)
     sys.stderr.flush()
 
 
-def write_ask_request(selection):
+def write_ask_request(selection, clipboard=""):
     temporary = ASK_REQUEST + ".tmp"
     try:
         with open(temporary, "w", encoding="utf-8") as fh:
-            json.dump({"selection": selection, "time": time.time()}, fh)
+            json.dump({"selection": selection, "clipboard": clipboard,
+                       "time": time.time()}, fh)
         os.replace(temporary, ASK_REQUEST)
     except OSError as ex:
         log("cannot write ask request: %r" % (ex,))
@@ -116,6 +136,64 @@ def write_ask_request(selection):
         os.unlink(ASK_STATE)
     except OSError:
         pass
+
+
+def notify(summary, body=""):
+    """Best-effort desktop notification; silence is acceptable."""
+    try:
+        subprocess.Popen(
+            ["notify-send", "-a", "Baogu IME", "-t", "4000", summary, body],
+            env=child_env(), start_new_session=True,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as ex:
+        log("cannot show notification: %r" % (ex,))
+
+
+def normalize_hotword(text):
+    """Reduce a selection to a single-line term, or "" when unusable."""
+    for line in (text or "").splitlines():
+        term = line.strip()
+        if term:
+            return term[:HOTWORD_MAX_CHARS]
+    return ""
+
+
+def add_hotword_from_selection():
+    """Teach the selected (else clipboard) text as a personal hotword.
+
+    Runs inside this daemon, so the glossary rebuild must not restart the
+    service that is calling it. The engine re-reads the glossary files when
+    they change, so the term still takes effect without a restart.
+    """
+    term = normalize_hotword(capture_selection())
+    source = "选区"
+    if not term:
+        term = normalize_hotword(capture_clipboard())
+        source = "剪贴板"
+    if not term:
+        log("hotword press: nothing selected")
+        notify("没有可添加的常用词", "请先选中或复制这个词")
+        return
+    env = child_env()
+    env["BAOGU_HOTWORDS_NO_RESTART"] = "1"
+    try:
+        done = subprocess.run(
+            [HOTWORD_SCRIPT, "add", term], env=env, text=True,
+            capture_output=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as ex:
+        log("cannot add hotword: %r" % (ex,))
+        notify("添加常用词失败", term)
+        return
+    output = (done.stdout or "").strip()
+    if done.returncode != 0:
+        log("hotword add failed rc=%d: %s" % (done.returncode, output))
+        notify("添加常用词失败", term)
+        return
+    log("hotword added from %s: %s" % (source, term))
+    notify("已加入常用词（%s）" % source, term)
 
 
 def ensure_ask_window():
@@ -136,7 +214,7 @@ def child_env():
     env.setdefault("DISPLAY", ":1")
     env["LD_LIBRARY_PATH"] = os.path.join(ROOT, "bin") + ":" + env.get("LD_LIBRARY_PATH", "")
     env["PATH"] = os.path.join(ROOT, "bin") + ":" + env.get("PATH", "")
-    env["VOICEIME_TRACE"] = "1"
+    env["BAOGU_TRACE"] = "1"
     return env
 
 
@@ -254,7 +332,7 @@ def single_instance():
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as ex:
         if ex.errno in (errno.EACCES, errno.EAGAIN):
-            log("another voiceime-ptt is already running")
+            log("another baogu-ptt is already running")
             sys.exit(0)
         raise
     return fh
@@ -265,7 +343,7 @@ def main():
         log("xinput not found")
         return 1
     if ENGINE_MODE == "sherpa" and not os.path.isfile(SHERPA_ENGINE):
-        log("voiceime-engine not found")
+        log("baogu-engine not found")
         return 1
     if ENGINE_MODE == "vosk" and not os.path.isdir(VOSK_MODEL):
         log("Vosk model not found")
@@ -309,6 +387,7 @@ def main():
 
         shortcut = CorrectionShortcut()
         ask = AskShortcut()
+        hotword = AskShortcut(HOTWORD_KEYCODE, HOTWORD_MODIFIER)
         events = KeyEvents(synthetic_devices)
         watcher = subprocess.Popen(
             ["stdbuf", "-oL", "xinput", "test-xi2", "--root"],
@@ -323,25 +402,40 @@ def main():
             event, keycode = parsed
             if shortcut.feed(event, keycode):
                 try:
-                    enabled = toggle_llm(os.environ.get("VOICEIME_LLM_ENABLED", "1") == "1")
-                    with open(os.path.join(RUNTIME, "voiceime-correction.state"), "w", encoding="utf-8") as fh:
+                    enabled = toggle_llm(os.environ.get("BAOGU_LLM_ENABLED", "1") == "1")
+                    with open(os.path.join(RUNTIME, "baogu-correction.state"), "w", encoding="utf-8") as fh:
                         json.dump({"session": "toggle", "status": "enabled" if enabled else "disabled", "time": time.time()}, fh)
                     log("DeepSeek correction " + ("enabled" if enabled else "disabled"))
                 except OSError as ex:
                     log("cannot save DeepSeek toggle: %r" % ex)
+            hotword_action = hotword.feed(event, keycode)
+            if hotword_action == "press":
+                # The rebuild inside baogu-hotwords blocks this loop for a
+                # moment; keys stay buffered in the pipe, so nothing is lost.
+                # Log the gate before acting: "nothing happened" and "the
+                # combo never fired" look identical from the outside.
+                log("hotword combo: held=%s asking=%s enabled=%s"
+                    % (held, asking, HOTWORD_ENABLED))
+                if not held and not asking and HOTWORD_ENABLED:
+                    add_hotword_from_selection()
             action = ask.feed(event, keycode)
             if action == "press":
                 if held or asking or not ASK_ENABLED:
                     continue
+                # Read the clipboard before the selection probe: the fallback
+                # path rewrites the clipboard and then restores it, and a
+                # silent press wants whatever the user actually copied.
+                clipboard = capture_clipboard()
                 selection = capture_selection()
                 # Start the engine before writing the request: a cold start
                 # clears stale ask files in its own initialization.
                 if not engine.alive() and not engine.start():
                     continue
-                write_ask_request(selection)
+                write_ask_request(selection, clipboard)
                 asking = True
                 ensure_ask_window()
-                log("ask requested selection_chars=%d" % len(selection))
+                log("ask requested selection_chars=%d clipboard_chars=%d"
+                    % (len(selection), len(clipboard)))
                 engine.resume()
             elif action == "release":
                 if asking:

@@ -20,4 +20,4 @@ done
 mkdir -p "$ROOT/models/$MODEL"
 cp -a "$stage/$MODEL/." "$ROOT/models/$MODEL/"
 touch "$ROOT/models/$MODEL/.complete"
-echo "Installed Qwen3-ASR. Benchmark before enabling VOICEIME_FINAL_BACKEND=qwen3."
+echo "Installed Qwen3-ASR. Benchmark before enabling BAOGU_FINAL_BACKEND=qwen3."

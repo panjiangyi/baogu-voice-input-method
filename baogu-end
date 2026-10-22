@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Ctrl+Alt+B -- stop dictating and type out what was recognized.
+set -u
+source "$(cd -- "$(dirname -- "$0")" && pwd)/baogu-lib.sh"
+
+baogu_lock
+baogu_suspend
+baogu_unlock

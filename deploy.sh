@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # build-and-start.sh — kill any running instance, rebuild from source,
-# and start a fresh VoiceIME daemon so the project is immediately usable.
+# and start a fresh Baogu IME daemon so the project is immediately usable.
 #
 # Designed for day-to-day use after a `git pull`. First-time install of
 # system packages (g++, fcitx5 dev libs, sherpa-onnx runtime, model
@@ -20,9 +20,9 @@ die()  { printf 'build-and-start: %s\n' "$*" >&2; exit 1; }
 # the non-interactive interface for automation; a terminal gets friendly
 # prompts with conservative defaults. The preedit pipeline does punctuation
 # locally, so DeepSeek correction stays off unless explicitly requested.
-LLM_ENABLED="${VOICEIME_LLM_ENABLED:-0}"
-LLM_MODE="${VOICEIME_LLM_MODE:-aggressive}"
-LLM_TIMEOUT="${VOICEIME_LLM_TIMEOUT:-15.0}"
+LLM_ENABLED="${BAOGU_LLM_ENABLED:-0}"
+LLM_MODE="${BAOGU_LLM_MODE:-aggressive}"
+LLM_TIMEOUT="${BAOGU_LLM_TIMEOUT:-15.0}"
 DEEPSEEK_MODEL="${DEEPSEEK_MODEL:-deepseek-v4-flash}"
 
 if [ -t 0 ]; then
@@ -56,18 +56,18 @@ if [ -t 0 ]; then
   fi
 fi
 
-case "$LLM_ENABLED" in 0|1) ;; *) die "VOICEIME_LLM_ENABLED must be 0 or 1" ;; esac
-case "$LLM_MODE" in punctuation|aggressive|dictation) ;; *) die "invalid VOICEIME_LLM_MODE: $LLM_MODE" ;; esac
+case "$LLM_ENABLED" in 0|1) ;; *) die "BAOGU_LLM_ENABLED must be 0 or 1" ;; esac
+case "$LLM_MODE" in punctuation|aggressive|dictation) ;; *) die "invalid BAOGU_LLM_MODE: $LLM_MODE" ;; esac
 [[ "$LLM_TIMEOUT" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "LLM timeout must be a positive number"
 [[ "$DEEPSEEK_MODEL" =~ ^[A-Za-z0-9._:/+-]+$ ]] || die "model name contains unsupported characters"
 
-if [ "$LLM_ENABLED" = 1 ] && [ "${VOICEIME_LLM_DISABLED:-0}" = 1 ]; then
-  die "DeepSeek was enabled but VOICEIME_LLM_DISABLED=1 blocks all calls; unset the kill switch first"
+if [ "$LLM_ENABLED" = 1 ] && [ "${BAOGU_LLM_DISABLED:-0}" = 1 ]; then
+  die "DeepSeek was enabled but BAOGU_LLM_DISABLED=1 blocks all calls; unset the kill switch first"
 fi
 
-export VOICEIME_LLM_ENABLED="$LLM_ENABLED"
-export VOICEIME_LLM_MODE="$LLM_MODE"
-export VOICEIME_LLM_TIMEOUT="$LLM_TIMEOUT"
+export BAOGU_LLM_ENABLED="$LLM_ENABLED"
+export BAOGU_LLM_MODE="$LLM_MODE"
+export BAOGU_LLM_TIMEOUT="$LLM_TIMEOUT"
 export DEEPSEEK_MODEL
 
 # 0. Install anything needed by the production pipeline. The setup script is
@@ -79,23 +79,23 @@ bash "$ROOT/scripts/09-setup-sherpa.sh"
 # 1. Make sure the project scripts are executable (a fresh checkout often
 #    loses +x, and 10-install-service.sh also resets these bits).
 step "Refresh executable bits"
-chmod +x "$ROOT"/voiceime-* "$ROOT"/native/*.sh "$ROOT"/scripts/*.sh
+chmod +x "$ROOT"/baogu-* "$ROOT"/native/*.sh "$ROOT"/scripts/*.sh
 
 # 2. Stop whatever is currently running.
 step "Stop existing daemon / instances"
-if [ -x "$ROOT/voiceime-reset" ]; then
-  "$ROOT/voiceime-reset" || true
+if [ -x "$ROOT/baogu-reset" ]; then
+  "$ROOT/baogu-reset" || true
 else
-  systemctl --user stop voiceime-ptt.service 2>/dev/null || true
+  systemctl --user stop baogu-ptt.service 2>/dev/null || true
 fi
 # Belt and braces: nuke any straggler engine / recorder / dictation process
 # that escaped the reset path (e.g. crashed before the cookie was written).
 pkill -u "$(id -u)" -x parec                    2>/dev/null || true
-pkill -u "$(id -u)" -f "$ROOT/voiceime-engine"  2>/dev/null || true
-pkill -u "$(id -u)" -f "$ROOT/voiceime-ptt"     2>/dev/null || true
+pkill -u "$(id -u)" -f "$ROOT/baogu-engine"  2>/dev/null || true
+pkill -u "$(id -u)" -f "$ROOT/baogu-ptt"     2>/dev/null || true
 
 # 3. Rebuild the Fcitx5 native bridge.
-step "Rebuild Fcitx5 addon (native/ → build/libvoiceime.so)"
+step "Rebuild Fcitx5 addon (native/ → build/libbaogu.so)"
 command -v g++ >/dev/null || die "g++ not installed"
 command -v fcitx5 >/dev/null || die "fcitx5 not installed"
 
@@ -104,7 +104,7 @@ command -v fcitx5 >/dev/null || die "fcitx5 not installed"
 FCITX_INC="${FCITX_DEV_ROOT:-/usr}/include/Fcitx5"
 needs_fcitx_dev=0
 for sub in Core/Addon addon addoninstance; do
-  # voiceime.cpp includes <fcitx/addonfactory.h>, which lives under Core/.
+  # baogu.cpp includes <fcitx/addonfactory.h>, which lives under Core/.
   [ -f "$FCITX_INC/Core/fcitx/addonfactory.h" ] || needs_fcitx_dev=1
   break
 done
@@ -141,14 +141,14 @@ setsid env DISPLAY="${DISPLAY:-:0}" \
            fcitx5 >/tmp/fcitx5.log 2>&1 < /dev/null &
 disown 2>/dev/null || true
 # Give fcitx5 a moment to register its D-Bus service before the engine
-# below tries to talk to org.voiceime.Input.
+# below tries to talk to org.baogu.Input.
 for _ in $(seq 1 30); do
-  busctl --user status org.voiceime.Input >/dev/null 2>&1 && break
+  busctl --user status org.baogu.Input >/dev/null 2>&1 && break
   sleep 0.1
 done
 
 # 4. Verify streaming + final quality models. Missing quality models are safe:
-#    VoiceIME falls back to streaming text, but the user should know they are
+#    Baogu IME falls back to streaming text, but the user should know they are
 #    not actually testing the new final pipeline.
 step "Verify production ASR models"
 SHERPA_MODEL="$ROOT/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en"
@@ -167,7 +167,7 @@ fi
 
 # 4b. Optional DeepSeek runs before the one-shot preedit commit.
 step "Configure optional DeepSeek correction"
-systemctl --user disable --now voiceime-corrector.service 2>/dev/null || true
+systemctl --user disable --now baogu-corrector.service 2>/dev/null || true
 if [ "$LLM_ENABLED" = 1 ]; then
   [ -s "$ROOT/.env" ] || die "AI correction enabled but $ROOT/.env is missing"
   grep -q '^DEEPSEEK_API_KEY=' "$ROOT/.env" || die "DEEPSEEK_API_KEY missing from .env"
@@ -185,16 +185,16 @@ bash "$ROOT/scripts/10-install-service.sh"
 systemctl --user daemon-reload
 
 # 6. Start the daemon.
-step "Start voiceime-ptt"
-systemctl --user enable --now voiceime-ptt.service
-systemctl --user enable --now voiceime-overlay.service
+step "Start baogu-ptt"
+systemctl --user enable --now baogu-ptt.service
+systemctl --user enable --now baogu-overlay.service
 
 # 7. Wait until the daemon is actually idle (suspended = loaded and ready
 #    for PTT) instead of declaring victory on "active" alone.
 printf 'Waiting for daemon to reach idle... '
 state=""
 for _ in $(seq 1 60); do
-  state="$("$ROOT/voiceime-status" 2>/dev/null \
+  state="$("$ROOT/baogu-status" 2>/dev/null \
             | awk -F': *' '/^state:[[:space:]]*/{print $2; exit}')"
   case "$state" in
     suspended|recording) printf 'ok (%s)\n' "$state"; break ;;
@@ -203,12 +203,12 @@ for _ in $(seq 1 60); do
 done
 if [ "$state" != suspended ] && [ "$state" != recording ]; then
   printf 'timed out (state=%s)\n' "${state:-none}"
-  printf 'Check: journalctl --user -u voiceime-ptt -n 80 --no-pager\n'
+  printf 'Check: journalctl --user -u baogu-ptt -n 80 --no-pager\n'
 fi
 
 step "Status"
-"$ROOT/voiceime-status"
+"$ROOT/baogu-status"
 
 step "Ready"
 printf 'Hold right Alt to dictate.  Ctrl+Alt+V toggles.  Ctrl+Alt+B forces stop.\n'
-printf 'Logs: journalctl --user -u voiceime-ptt -f\n'
+printf 'Logs: journalctl --user -u baogu-ptt -f\n'

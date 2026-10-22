@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Non-focus-stealing VoiceIME recording and correction indicator."""
+"""Non-focus-stealing Baogu IME recording and correction indicator."""
 from __future__ import annotations
 
 import json
@@ -17,15 +17,15 @@ from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 import cairo  # noqa: E402
 
 RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
-ENGINE_STATE = RUNTIME / "voiceime-engine.state"
-CORRECTION_STATE = RUNTIME / "voiceime-correction.state"
+ENGINE_STATE = RUNTIME / "baogu-engine.state"
+CORRECTION_STATE = RUNTIME / "baogu-correction.state"
 RESULT_SECONDS = 1.5
 
 
 class Indicator(Gtk.Window):
     def __init__(self) -> None:
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
-        self.set_title("VoiceIME Indicator")
+        self.set_title("Baogu IME Indicator")
         self.set_decorated(False)
         self.set_resizable(False)
         self.set_keep_above(True)
@@ -103,7 +103,8 @@ class Indicator(Gtk.Window):
             wanted = "correcting"
         elif engine == "finalizing":
             wanted = "finalizing"
-        elif status in {"success", "failed", "timeout", "enabled", "disabled"} and time.time() - changed < RESULT_SECONDS:
+        elif status in {"success", "kept-original", "failed", "timeout",
+                        "enabled", "disabled"} and time.time() - changed < RESULT_SECONDS:
             wanted = status
         else:
             wanted = "hidden"
@@ -154,6 +155,7 @@ class Indicator(Gtk.Window):
             "enabled": ("纠错已开启", (0.35, 0.85, 0.57)),
             "disabled": ("纠错已关闭", (1.0, 0.70, 0.30)),
             "success": ("纠错完成", (0.35, 0.85, 0.57)),
+            "kept-original": ("保留原始转写", (0.72, 0.76, 0.84)),
             "failed": ("纠错失败", (1.0, 0.45, 0.45)),
             "timeout": ("纠错超时", (1.0, 0.70, 0.30)),
         }

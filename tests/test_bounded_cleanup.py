@@ -8,7 +8,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-ENGINE = runpy.run_path(str(Path(__file__).resolve().parents[1] / "voiceime-engine"))
+ENGINE = runpy.run_path(str(Path(__file__).resolve().parents[1] / "baogu-engine"))
 
 
 class BridgeContextTests(unittest.TestCase):
@@ -49,7 +49,7 @@ class BoundedCleanupTests(unittest.TestCase):
 
         with patch.dict(cleanup.__globals__, current_session="s", start_request=1,
                         terminate=False, llm_inflight=None, llm_executor=None), \
-                patch.dict(os.environ, VOICEIME_LLM_MAX_WAIT="0.08" if not supersede else "1"):
+                patch.dict(os.environ, BAOGU_LLM_MAX_WAIT="0.08" if not supersede else "1"):
             cloud = SlowCloud()
             timer = None
             if supersede:

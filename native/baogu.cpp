@@ -19,15 +19,15 @@
 #include <string>
 #include <tuple>
 
-class VoiceIME : public fcitx::AddonInstance,
-                 public fcitx::dbus::ObjectVTable<VoiceIME> {
+class BaoguIme : public fcitx::AddonInstance,
+                 public fcitx::dbus::ObjectVTable<BaoguIme> {
 public:
-    explicit VoiceIME(fcitx::Instance *instance)
+    explicit BaoguIme(fcitx::Instance *instance)
         : instance_(instance), bus_(fcitx::dbus::BusType::Session) {
         bus_.attachEventLoop(&instance_->eventLoop());
-        if (!bus_.requestName("org.voiceime.Input", fcitx::dbus::RequestNameFlag::None) ||
-            !bus_.addObjectVTable("/org/voiceime/Input", "org.voiceime.Input1", *this)) {
-            throw std::runtime_error("Cannot register VoiceIME input bridge");
+        if (!bus_.requestName("org.baogu.Input", fcitx::dbus::RequestNameFlag::None) ||
+            !bus_.addObjectVTable("/org/baogu/Input", "org.baogu.Input1", *this)) {
+            throw std::runtime_error("Cannot register Baogu IME input bridge");
         }
     }
 
@@ -228,13 +228,13 @@ private:
     bool previewImpl(const std::string &text) {
         auto *ic = currentInputContext();
         if (!ic) {
-            FCITX_WARN() << "VoiceIME: preview rejected, focus or session lost";
+            FCITX_WARN() << "Baogu IME: preview rejected, focus or session lost";
             active_ = false;
             return false;
         }
         if (text.size() > 65536 ||
             (!text.empty() && !fcitx::utf8::validate(text))) {
-            FCITX_WARN() << "VoiceIME: preview rejected, invalid text";
+            FCITX_WARN() << "Baogu IME: preview rejected, invalid text";
             return false;
         }
 
@@ -257,18 +257,18 @@ private:
     bool commitImpl(const std::string &text) {
         auto *ic = currentInputContext();
         if (!ic) {
-            FCITX_WARN() << "VoiceIME: commit rejected, focus or session lost";
+            FCITX_WARN() << "Baogu IME: commit rejected, focus or session lost";
             active_ = false;
             return false;
         }
         if (text.size() > 65536 ||
             (!text.empty() && !fcitx::utf8::validate(text))) {
-            FCITX_WARN() << "VoiceIME: commit rejected, invalid text";
+            FCITX_WARN() << "Baogu IME: commit rejected, invalid text";
             return false;
         }
 
         if (snapshotValid_ && !snapshotMatches(ic)) {
-            FCITX_WARN() << "VoiceIME: commit rejected, target text/cursor changed";
+            FCITX_WARN() << "Baogu IME: commit rejected, target text/cursor changed";
             clearPreedit(ic);
             active_ = false;
             preview_.clear();
@@ -360,14 +360,14 @@ private:
     bool updateImpl(int32_t remove, const std::string &text) {
         auto *ic = instance_->inputContextManager().lastFocusedInputContext();
         if (!active_ || !ic || !ic->hasFocus() || ic->uuid() != target_) {
-            FCITX_WARN() << "VoiceIME: update rejected, focus or session lost";
+            FCITX_WARN() << "Baogu IME: update rejected, focus or session lost";
             active_ = false;
             return false;
         }
         if (remove < 0 || static_cast<size_t>(remove) > inserted_ ||
             remove > 4096 || text.size() > 65536 ||
             (!text.empty() && !fcitx::utf8::validate(text))) {
-            FCITX_WARN() << "VoiceIME: update rejected, bad params remove="
+            FCITX_WARN() << "Baogu IME: update rejected, bad params remove="
                          << remove << " text_bytes=" << text.size();
             return false;
         }
@@ -402,14 +402,14 @@ private:
         //     streamed into the IC character by character during this session.
         if (remove) {
             if (snapshotValid_ && !snapshotMatches(ic)) {
-                FCITX_WARN() << "VoiceIME: destructive update rejected, "
+                FCITX_WARN() << "Baogu IME: destructive update rejected, "
                                 "snapshot drifted (inserted=" << inserted_
                              << " text_bytes=" << text.size() << ")";
                 active_ = false;
                 return false;
             }
             if (!snapshotValid_) {
-                FCITX_WARN() << "VoiceIME: destructive update without "
+                FCITX_WARN() << "Baogu IME: destructive update without "
                                 "surrounding-text snapshot; accepting based on "
                                 "session-committed state (inserted=" << inserted_
                              << " remove=" << remove
@@ -469,10 +469,10 @@ private:
     std::string after_;
 };
 
-class VoiceIMEFactory : public fcitx::AddonFactory {
+class BaoguImeFactory : public fcitx::AddonFactory {
     fcitx::AddonInstance *create(fcitx::AddonManager *manager) override {
-        return new VoiceIME(manager->instance());
+        return new BaoguIme(manager->instance());
     }
 };
 
-FCITX_ADDON_FACTORY(VoiceIMEFactory);
+FCITX_ADDON_FACTORY(BaoguImeFactory);

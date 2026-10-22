@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Build VoiceIME's merged domain glossary.
+"""Build Baogu IME's merged domain glossary.
 
 Built-in vocabularies are always included by default. If the user has
-~/.config/voiceime/hotwords.txt (or XDG_CONFIG_HOME equivalent), it is merged
+~/.config/baogu/hotwords.txt (or XDG_CONFIG_HOME equivalent), it is merged
 last so personal terms participate in the same ASR contextual-bias list.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ DEFAULT_FILES = (
 
 def personal_glossary_path() -> Path:
     config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return config_home / "voiceime" / "hotwords.txt"
+    return config_home / "baogu" / "hotwords.txt"
 
 
 def read_terms(path: Path) -> list[str]:
@@ -74,7 +74,7 @@ def main() -> int:
     parser.add_argument(
         "--no-personal",
         action="store_true",
-        help="Do not append ~/.config/voiceime/hotwords.txt to default inputs.",
+        help="Do not append ~/.config/baogu/hotwords.txt to default inputs.",
     )
     args = parser.parse_args()
 

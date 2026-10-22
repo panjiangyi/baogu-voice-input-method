@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Interactive voice sample collector for VoiceIME.
+# Interactive voice sample collector for Baogu IME.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -115,7 +115,7 @@ PROMPTS=(
     "今天我们先测试一下麦克风，看看中文语音输入能不能稳定识别。"
     "我刚才插上了麦克风，现在想用语音来控制电脑输入文字。"
     "这个项目的目标是让我在日常写作和编程的时候，都可以直接说话输入。"
-    "请帮我打开终端，然后切换到 laopan voice input method 这个项目目录。"
+    "请帮我打开终端，然后切换到 baogu voice input method 这个项目目录。"
     "我希望识别结果不仅中文准确，英文单词、数字、标点和代码变量名也不要乱改。"
     "明天上午十点半，我们一起看一下 pull request 和 GitHub Actions 的结果。"
     "这个 API 的 timeout 先设置成两秒，后面再根据延迟数据调整。"
@@ -133,7 +133,7 @@ PROMPTS=(
     "如果最后识别结果不确定，就保留原文，不要为了通顺强行改写。"
     "现在我要测试一段比较长的句子，里面包含中文、English words、数字 42，以及一点点停顿。"
     "打开 VS Code，搜索 FinalRecognizer，然后看一下异常处理有没有覆盖测试。"
-    "把环境变量 VOICEIME_ENABLE_LLM 设置为零，再重新启动 systemd 用户服务。"
+    "把环境变量 BAOGU_ENABLE_LLM 设置为零，再重新启动 systemd 用户服务。"
     "这条命令是 git commit -m fix voice input safety，不要把横杠删掉。"
     "日志里看到 endpoint triggered，但是最终文本是空字符串。"
     "如果麦克风源切换了，请优先选择 USB 设备，而不是显示器的 monitor source。"
@@ -183,7 +183,7 @@ if [ "$END_INDEX" -gt "${#PROMPTS[@]}" ]; then
     END_INDEX="${#PROMPTS[@]}"
 fi
 
-MIC_SOURCE="${MIC_SOURCE:-$("$ROOT/voiceime-mic")}"
+MIC_SOURCE="${MIC_SOURCE:-$("$ROOT/baogu-mic")}"
 if [ -z "$MIC_SOURCE" ]; then
     echo "[error] no PulseAudio/PipeWire input source found." >&2
     exit 1
@@ -195,7 +195,7 @@ if [ ! -f "$MANIFEST" ]; then
     printf "id\twav\ttarget_text\tactual_text\n" >"$MANIFEST"
 fi
 
-echo "VoiceIME sample recorder"
+echo "Baogu IME sample recorder"
 echo "Mic source: $MIC_SOURCE"
 echo "Session: $SESSION_DIR"
 echo "Samples: S-$(printf "%03d" "$START_INDEX") through S-$(printf "%03d" "$END_INDEX")"

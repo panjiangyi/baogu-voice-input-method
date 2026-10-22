@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="VoiceIME — Linux 上唯一免费的中文 / 中英混合语音输入法。按住右 Alt 说话，松键直接上屏。对标豆包输入法 80% 体验。永远免费、开源。">
+  <meta name="description" content="苞谷输入法 — Linux 上唯一免费的中文 / 中英混合语音输入法。按住右 Alt 说话，松键直接上屏。对标豆包输入法 80% 体验。永远免费、开源。">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23ef1f16'/%3E%3Cpath d='M11 8v7a5 5 0 0 0 10 0V8' stroke='%23ffe500' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Cpath d='M8 15a8 8 0 0 0 16 0M16 23v5M11 28h10' stroke='%23ffe500' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
-  <meta property="og:title" content="VoiceIME | Linux 上唯一免费的中文语音输入法">
+  <meta property="og:title" content="苞谷输入法 | Linux 上唯一免费的中文语音输入法">
   <meta property="og:description" content="按住右 Alt 说话，中文 / 中英混合直接上屏。对标豆包输入法 80% 体验。永远免费、开源。">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://voiceime.mogician.me/">
-  <title>VoiceIME | Linux 上唯一免费的中文语音输入法</title>
+  <meta property="og:url" content="https://baogu.mogician.me/">
+  <title>苞谷输入法 | Linux 上唯一免费的中文语音输入法</title>
   <style>
     :root {
       --red: #ef1f16;
@@ -302,7 +302,7 @@
 
 <header class="topbar">
   <nav class="shell nav" aria-label="主导航">
-    <a class="brand" href="#top">VoiceIME<i>.</i></a>
+    <a class="brand" href="#top">苞谷输入法<i>.</i></a>
     <div class="nav-links">
       <a href="#why">为什么</a><a href="#compare">对比</a><a href="#arch">架构</a><a href="#numbers">数字</a><a href="#install">安装</a><a class="nav-cta" href="#install">五分钟上手 →</a>
     </div>
@@ -321,7 +321,7 @@
       <div class="tag"><b>90.66%</b>30 条真人样本 · 内容准确率</div>
     </div>
     <div class="hero-bottom">
-      <p>macOS 上有 typeless，但收费。豆包输入法没出 Linux 版。nerd-dictation 不支持中文。<br>VoiceIME 是 Linux 上按住右 Alt 就能说话、中文 / 中英混合直接上屏的日用级替代 — <b>并且免费、开源。</b></p>
+      <p>macOS 上有 typeless，但收费。豆包输入法没出 Linux 版。nerd-dictation 不支持中文。<br>苞谷输入法是 Linux 上按住右 Alt 就能说话、中文 / 中英混合直接上屏的日用级替代 — <b>并且免费、开源。</b></p>
       <span class="scroll">SCROLL ↓</span>
     </div>
   </section>
@@ -372,7 +372,7 @@
         <thead>
           <tr>
             <th></th>
-            <th class="col-us">VoiceIME</th>
+            <th class="col-us">苞谷输入法</th>
             <th>typeless</th>
             <th>豆包输入法</th>
             <th>nerd-dictation</th>
@@ -431,7 +431,7 @@
         </tbody>
       </table>
       <p style="margin-top: 24px; font-family: Arial, 'Microsoft YaHei', sans-serif; font-size: 14px; color: #55534d;">
-        VoiceIME 在「Linux 桌面 + 免费 + 代码可控」三项的交叉格里，是目前唯一的选项。
+        苞谷输入法在「Linux 桌面 + 免费 + 代码可控」三项的交叉格里，是目前唯一的选项。
       </p>
     </div>
   </section>
@@ -452,7 +452,7 @@
                                             │ partial / final
                                             ▼
        ┌────────────────────────────────────────────────────────┐
-       │  <b>voiceime-ptt</b> supervisor                          │
+       │  <b>baogu-ptt</b> supervisor                          │
        │  · 100ms 内恢复 idle                                     │
        │  · 每 20ms 拉一次音频，避免积压                            │
        │  · 持久 Gio D-Bus 直连 Fcitx5（不再每 partial 启 busctl）│
@@ -472,7 +472,7 @@
                 │ 当前焦点输入框 ← 真正上屏  │
                 └──────────────────────┘
 
-   <span class="o">Optional</span>: 松键后接 <b>FireRedASR2</b> 二遍纠错（默认关闭，需 <span class="o">VOICEIME_FINAL_ENABLED=1</span>）</div>
+   <span class="o">Optional</span>: 松键后接 <b>FireRedASR2</b> 二遍纠错（默认关闭，需 <span class="o">BAOGU_FINAL_ENABLED=1</span>）</div>
     </div>
   </section>
 
@@ -544,7 +544,7 @@
 <span class="c-cmd">./deploy.sh</span>
 <span class="c-comment"># 默认开启 DeepSeek 标点纠错；模式默认 punctuation（只补标点 / 空格）</span>
 <span class="c-comment"># 关闭 AI：</span>
-<span class="c-cmd">VOICEIME_LLM_ENABLED=0 ./deploy.sh</span></pre>
+<span class="c-cmd">BAOGU_LLM_ENABLED=0 ./deploy.sh</span></pre>
 
 <pre class="pre" id="tab-fresh" hidden><span class="c-comment"># 1. 构建 Fcitx5 原生桥</span>
 <span class="c-cmd">sudo apt-get install -y g++ libfcitx5core-dev libfcitx5utils-dev libfcitx5config-dev</span>
@@ -568,14 +568,14 @@ chmod 600 .env</span>
 <span class="c-cmd">bash scripts/10-install-service.sh</span></pre>
 
 <pre class="pre" id="tab-run" hidden><span class="c-comment"># 当前状态 / 进程 / 麦克风</span>
-<span class="c-cmd">./voiceime-status</span>
+<span class="c-cmd">./baogu-status</span>
 
 <span class="c-comment"># 实时日志</span>
-<span class="c-cmd">journalctl --user -u voiceime-ptt -f</span>
-<span class="c-cmd">journalctl --user -u voiceime-corrector -f</span>
+<span class="c-cmd">journalctl --user -u baogu-ptt -f</span>
+<span class="c-cmd">journalctl --user -u baogu-corrector -f</span>
 
 <span class="c-comment"># 出问题时一键清理</span>
-<span class="c-cmd">./voiceime-reset</span>
+<span class="c-cmd">./baogu-reset</span>
 
 <span class="c-comment"># 跑同一批真人样本做 A/B</span>
 <span class="c-cmd">python3 scripts/08-offline-suite.py \
@@ -629,7 +629,7 @@ chmod 600 .env</span>
       <div class="contact-grid">
         <div class="contact-cta">
           <a class="primary" href="#install">查看安装 ↑</a>
-          <a href="https://github.com/panjiangyi/laopan-voice-input-method" target="_blank" rel="noopener noreferrer">GitHub 源码 ↗</a>
+          <a href="https://github.com/panjiangyi/baogu-voice-input-method" target="_blank" rel="noopener noreferrer">GitHub 源码 ↗</a>
           <a href="https://mogician.me" target="_blank" rel="noopener noreferrer">作者主页 ↗</a>
         </div>
       </div>
@@ -638,7 +638,7 @@ chmod 600 .env</span>
 </main>
 
 <footer class="shell">
-  <span>© 2026 VoiceIME · 永久免费 · 开源 · 一个 side project。</span>
+  <span>© 2026 苞谷输入法 · 永久免费 · 开源 · 一个 side project。</span>
   <a href="#top">回到顶部 ↑</a>
 </footer>
 

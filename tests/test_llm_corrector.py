@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ENGINE = runpy.run_path(str(ROOT / "voiceime-engine"))
+ENGINE = runpy.run_path(str(ROOT / "baogu-engine"))
 Corrector = ENGINE["LLMCorrector"]
 
 
@@ -112,12 +112,12 @@ class LLMCorrectorTests(unittest.TestCase):
         reply = {"choices": [{"finish_reason": "stop",
                               "message": {"role": "assistant", "content": "检查 GitHub Actions。"}}]}
         with StubServer([reply]) as srv, _with_env({
-            "VOICEIME_LLM_ENABLED": "1",
-            "VOICEIME_LLM_DISABLED": "0",
-            "VOICEIME_LLM_MODE": "aggressive",
-            "VOICEIME_LLM_API": "openai",
+            "BAOGU_LLM_ENABLED": "1",
+            "BAOGU_LLM_DISABLED": "0",
+            "BAOGU_LLM_MODE": "aggressive",
+            "BAOGU_LLM_API": "openai",
             "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}/v1",
-            "VOICEIME_LLM_TIMEOUT": "2",
+            "BAOGU_LLM_TIMEOUT": "2",
         }):
             c = Corrector()
             self.assertEqual(c.correct("检查 get up actions"), "检查 GitHub Actions。")
@@ -132,12 +132,12 @@ class LLMCorrectorTests(unittest.TestCase):
         reply = {"choices": [{"finish_reason": "length",
                               "message": {"role": "assistant", "content": "检查"}}]}
         with StubServer([reply]) as srv, _with_env({
-            "VOICEIME_LLM_ENABLED": "1",
-            "VOICEIME_LLM_DISABLED": "0",
-            "VOICEIME_LLM_MODE": "aggressive",
-            "VOICEIME_LLM_API": "openai",
+            "BAOGU_LLM_ENABLED": "1",
+            "BAOGU_LLM_DISABLED": "0",
+            "BAOGU_LLM_MODE": "aggressive",
+            "BAOGU_LLM_API": "openai",
             "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}/v1",
-            "VOICEIME_LLM_TIMEOUT": "2",
+            "BAOGU_LLM_TIMEOUT": "2",
         }):
             c = Corrector()
             self.assertEqual(c.correct("检查 get up actions"), "检查 get up actions")
@@ -155,11 +155,11 @@ class LLMCorrectorTests(unittest.TestCase):
         ):
             with self.subTest(enabled=enabled, expected=expected), StubServer(responses) as srv:
                 with _with_env({
-                    "VOICEIME_LLM_ENABLED": enabled,
-                    "VOICEIME_LLM_DISABLED": "0",
-                    "VOICEIME_LLM_MODE": "aggressive",
+                    "BAOGU_LLM_ENABLED": enabled,
+                    "BAOGU_LLM_DISABLED": "0",
+                    "BAOGU_LLM_MODE": "aggressive",
                     "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
-                    "VOICEIME_LLM_TIMEOUT": "2",
+                    "BAOGU_LLM_TIMEOUT": "2",
                 }):
                     corrector = Corrector()
                     with patch.dict(finish.__globals__, current_session="test", start_request=1,
@@ -177,10 +177,10 @@ class LLMCorrectorTests(unittest.TestCase):
             {"content": [{"type": "text", "text": "今天，天气很好。"}]},
         ]) as srv:
             with _with_env({
-                "VOICEIME_LLM_ENABLED": "1",
+                "BAOGU_LLM_ENABLED": "1",
                 "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
-                "VOICEIME_LLM_TIMEOUT": "2.0",
-                "VOICEIME_LLM_MODE": "punctuation",
+                "BAOGU_LLM_TIMEOUT": "2.0",
+                "BAOGU_LLM_MODE": "punctuation",
             }):
                 c = Corrector()
             self.assertTrue(c._available)
@@ -199,10 +199,10 @@ class LLMCorrectorTests(unittest.TestCase):
             {"content": [{"type": "text", "text": "今天气象很好"}]},
         ]) as srv:
             with _with_env({
-                "VOICEIME_LLM_ENABLED": "1",
+                "BAOGU_LLM_ENABLED": "1",
                 "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
-                "VOICEIME_LLM_TIMEOUT": "1.0",
-                "VOICEIME_LLM_MODE": "punctuation",
+                "BAOGU_LLM_TIMEOUT": "1.0",
+                "BAOGU_LLM_MODE": "punctuation",
             }):
                 c = Corrector()
             # The LLM cannot know from text alone whether 气像 or 气象 was spoken.
@@ -211,8 +211,13 @@ class LLMCorrectorTests(unittest.TestCase):
             self.assertEqual(c.last_status, "rejected")
 
     def test_dictation_separates_instructions_and_bounded_context(self):
-        with StubServer([{"content": [{"type": "text", "text": "明天下午四点开会。"}]}]) as srv:
-            with _with_env({"VOICEIME_LLM_ENABLED": "1", "VOICEIME_LLM_MODE": "dictation",
+        # Dictation polish is judged against the raw ASR text, so the stub has
+        # to answer both the polish call and the comparison call.
+        with StubServer([
+            {"content": [{"type": "text", "text": "明天下午四点开会。"}]},
+            {"content": [{"type": "text", "text": "B"}]},
+        ]) as srv:
+            with _with_env({"BAOGU_LLM_ENABLED": "1", "BAOGU_LLM_MODE": "dictation",
                             "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
                 c = Corrector()
                 result = c.correct("嗯明天下午三点不四点开会", context={
@@ -225,12 +230,74 @@ class LLMCorrectorTests(unittest.TestCase):
             self.assertEqual(data["text"], "嗯明天下午三点不四点开会")
             self.assertEqual(data["context"], {"app": "chat", "before": "前" * 500,
                                                "after": "后" * 500})
+            judged = json.loads(srv.requests[1]["messages"][0]["content"])
+            self.assertEqual(judged["A"], "嗯明天下午三点不四点开会")
+            self.assertEqual(judged["B"], "明天下午四点开会。")
+            self.assertEqual(srv.requests[1]["max_tokens"], 8)
+
+    def test_dictation_keeps_original_when_polish_is_worse(self):
+        with StubServer([
+            {"content": [{"type": "text", "text": "这个方案很优雅地解决了问题。"}]},
+            {"content": [{"type": "text", "text": "A"}]},
+        ]) as srv:
+            with _with_env({"BAOGU_LLM_ENABLED": "1", "BAOGU_LLM_MODE": "dictation",
+                            "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
+                c = Corrector()
+                result = c.correct("这个方案他妈的解决了问题")
+            self.assertEqual(result, "这个方案他妈的解决了问题")
+            self.assertEqual(c.last_status, "kept-original")
+
+    def test_dictation_judge_failure_keeps_original(self):
+        # No scripted verdict -> HTTP 500. The raw ASR text is the safe default.
+        with StubServer([
+            {"content": [{"type": "text", "text": "今天天气不错。"}]},
+        ]) as srv:
+            with _with_env({"BAOGU_LLM_ENABLED": "1", "BAOGU_LLM_MODE": "dictation",
+                            "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
+                c = Corrector()
+                result = c.correct("今天天气不错")
+            self.assertEqual(result, "今天天气不错")
+            self.assertEqual(c.last_status, "kept-original")
+
+    def test_kept_original_reaches_the_overlay_as_its_own_status(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from types import SimpleNamespace
+        finish = ENGINE["_best_final_text"]
+        identity = SimpleNamespace(correct=lambda text: text)
+        states = []
+        with StubServer([
+            {"content": [{"type": "text", "text": "这个方案很优雅地解决了问题。"}]},
+            {"content": [{"type": "text", "text": "A"}]},
+        ]) as srv:
+            with _with_env({
+                "BAOGU_LLM_ENABLED": "1",
+                "BAOGU_LLM_DISABLED": "0",
+                "BAOGU_LLM_MODE": "dictation",
+                "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
+                "BAOGU_LLM_TIMEOUT": "2",
+            }):
+                corrector = Corrector()
+                with patch.dict(finish.__globals__, current_session="test", start_request=1,
+                                terminate=False, final_inflight=None,
+                                set_correction_state=lambda s, status: states.append(status)):
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        result = finish("test", 1, "这个方案他妈的解决了问题", b"",
+                                        SimpleNamespace(recognizer=None), identity,
+                                        identity, executor, llm=corrector)
+        self.assertEqual(result, "这个方案他妈的解决了问题")
+        self.assertIn("kept-original", states)
+        self.assertNotIn("failed", states)
+
+    def test_dictation_profanity_preservation_is_instructed(self):
+        self.assertIn("脏话", Corrector.DICTATION_PROMPT)
+        self.assertIn("禁止净化", Corrector.DICTATION_PROMPT)
+        self.assertIn("脏话", Corrector.REWRITE_PROMPT)
 
     def test_truncated_long_response_preserves_original(self):
         original = "今天讨论项目的部署问题" * 200
         with StubServer([{"stop_reason": "max_tokens", "content": [
                 {"type": "text", "text": "今天讨论"}]}]) as srv:
-            with _with_env({"VOICEIME_LLM_ENABLED": "1", "VOICEIME_LLM_MODE": "dictation",
+            with _with_env({"BAOGU_LLM_ENABLED": "1", "BAOGU_LLM_MODE": "dictation",
                             "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
                 c = Corrector()
                 self.assertEqual(c.correct(original), original)
@@ -239,7 +306,7 @@ class LLMCorrectorTests(unittest.TestCase):
 
     def test_answer_returns_reply_and_sends_selection(self):
         with StubServer([{"content": [{"type": "text", "text": "这句话的意思是：部署已经完成。"}]}]) as srv:
-            with _with_env({"VOICEIME_LLM_ENABLED": "1",
+            with _with_env({"BAOGU_LLM_ENABLED": "1",
                             "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
                 c = Corrector()
                 result = c.answer("这句话什么意思", "部署已经完成")
@@ -254,7 +321,7 @@ class LLMCorrectorTests(unittest.TestCase):
     def test_answer_marks_truncated_output(self):
         with StubServer([{"stop_reason": "max_tokens",
                           "content": [{"type": "text", "text": "部分回答"}]}]) as srv:
-            with _with_env({"VOICEIME_LLM_ENABLED": "1",
+            with _with_env({"BAOGU_LLM_ENABLED": "1",
                             "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
                 c = Corrector()
                 result = c.answer("问", "选中的文字")
@@ -285,10 +352,10 @@ class LLMCorrectorTests(unittest.TestCase):
             {"content": [{"type": "text", "text": "我们部署项目。"}]},
         ]) as srv:
             with _with_env({
-                "VOICEIME_LLM_ENABLED": "1",
+                "BAOGU_LLM_ENABLED": "1",
                 "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
-                "VOICEIME_LLM_TIMEOUT": "1.0",
-                "VOICEIME_LLM_MODE": "punctuation",
+                "BAOGU_LLM_TIMEOUT": "1.0",
+                "BAOGU_LLM_MODE": "punctuation",
             }):
                 c = Corrector()
             self.assertEqual(
@@ -301,10 +368,10 @@ class LLMCorrectorTests(unittest.TestCase):
             {"content": [{"type": "text", "text": "把 GitLab PR merge 到 main。"}]},
         ]) as srv:
             with _with_env({
-                "VOICEIME_LLM_ENABLED": "1",
+                "BAOGU_LLM_ENABLED": "1",
                 "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
-                "VOICEIME_LLM_TIMEOUT": "1.0",
-                "VOICEIME_LLM_MODE": "punctuation",
+                "BAOGU_LLM_TIMEOUT": "1.0",
+                "BAOGU_LLM_MODE": "punctuation",
             }):
                 c = Corrector()
             self.assertEqual(
@@ -339,10 +406,10 @@ class LLMCorrectorTests(unittest.TestCase):
             {"content": [{"type": "text", "text": "今天气象很好"}]},
         ]) as srv:
             with _with_env({
-                "VOICEIME_LLM_ENABLED": "1",
+                "BAOGU_LLM_ENABLED": "1",
                 "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
-                "VOICEIME_LLM_TIMEOUT": "1.0",
-                "VOICEIME_LLM_MODE": "aggressive",
+                "BAOGU_LLM_TIMEOUT": "1.0",
+                "BAOGU_LLM_MODE": "aggressive",
             }):
                 c = Corrector()
             self.assertEqual(c.correct("今天气像很好"), "今天气象很好")
@@ -350,9 +417,9 @@ class LLMCorrectorTests(unittest.TestCase):
     def test_unreachable_endpoint_is_safe_fallback(self):
         dead_port = _free_port()
         with _with_env({
-            "VOICEIME_LLM_ENABLED": "1",
+            "BAOGU_LLM_ENABLED": "1",
                 "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{dead_port}",
-            "VOICEIME_LLM_TIMEOUT": "0.2",
+            "BAOGU_LLM_TIMEOUT": "0.2",
         }):
             dead = Corrector()
         self.assertTrue(dead._available)
@@ -360,11 +427,11 @@ class LLMCorrectorTests(unittest.TestCase):
         self.assertEqual(dead.correct("原文不动"), "原文不动")
 
     def test_disabled_flag_short_circuits(self):
-        with _with_env({"VOICEIME_LLM_ENABLED": "0"}):
+        with _with_env({"BAOGU_LLM_ENABLED": "0"}):
             with StubServer([]) as srv:
                 os.environ["DEEPSEEK_BASE_URL"] = f"http://127.0.0.1:{srv.port}"
                 os.environ["DEEPSEEK_API_KEY"] = "test-key"
-                os.environ["VOICEIME_LLM_TIMEOUT"] = "1.0"
+                os.environ["BAOGU_LLM_TIMEOUT"] = "1.0"
                 c = Corrector()
                 self.assertTrue(c._available)
                 self.assertEqual(c.correct("原文不动"), "原文不动")
@@ -376,9 +443,9 @@ class LLMCorrectorTests(unittest.TestCase):
             {"content": [{"type": "text", "text": "   "}]},
         ]) as srv:
             with _with_env({
-                "VOICEIME_LLM_ENABLED": "1",
+                "BAOGU_LLM_ENABLED": "1",
                 "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
-                "VOICEIME_LLM_TIMEOUT": "1.0",
+                "BAOGU_LLM_TIMEOUT": "1.0",
             }):
                 c = Corrector()
             self.assertTrue(c._available)
@@ -389,9 +456,9 @@ class LLMCorrectorTests(unittest.TestCase):
             {"no_content_here": True},
         ]) as srv:
             with _with_env({
-                "VOICEIME_LLM_ENABLED": "1",
+                "BAOGU_LLM_ENABLED": "1",
                 "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
-                "VOICEIME_LLM_TIMEOUT": "1.0",
+                "BAOGU_LLM_TIMEOUT": "1.0",
             }):
                 c = Corrector()
             self.assertTrue(c._available)
@@ -400,9 +467,9 @@ class LLMCorrectorTests(unittest.TestCase):
     def test_empty_text_input_skips_request(self):
         with StubServer([]) as srv:
             with _with_env({
-                "VOICEIME_LLM_ENABLED": "1",
+                "BAOGU_LLM_ENABLED": "1",
                 "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
-                "VOICEIME_LLM_TIMEOUT": "1.0",
+                "BAOGU_LLM_TIMEOUT": "1.0",
             }):
                 c = Corrector()
             self.assertTrue(c._available)

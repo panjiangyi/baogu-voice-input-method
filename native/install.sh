@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-test -f "$ROOT/build/libvoiceime.so"
+test -f "$ROOT/build/libbaogu.so"
 TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/addon"
 mkdir -p "$TARGET"
-cat > "$TARGET/voiceime.conf" <<EOF
+# Remove the pre-rename addon so two bridges cannot claim the same D-Bus name.
+rm -f "$TARGET/voiceime.conf"
+cat > "$TARGET/baogu.conf" <<EOF
 [Addon]
-Name=VoiceIME native text input
+Name=Baogu IME native text input
 Type=SharedLibrary
-Library=$ROOT/build/libvoiceime
+Library=$ROOT/build/libbaogu
 Category=Module
 Version=0.1
 OnDemand=False
 EOF
-echo "Installed $TARGET/voiceime.conf; restart Fcitx5 to load the addon."
+echo "Installed $TARGET/baogu.conf; restart Fcitx5 to load the addon."

@@ -4,6 +4,15 @@
 # Monitor sources are never candidates (they are named alsa_output.*.monitor).
 set -u
 
+# Also work when invoked from a shell outside the desktop session.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+# Our WebRTC source must take priority over physical USB microphones.
+if pactl list short sources 2>/dev/null | awk '{print $2}' | grep -qxF baogu_echo_source; then
+  echo baogu_echo_source
+  exit 0
+fi
+
 sources() { pactl list short sources 2>/dev/null | awk '{print $2}' | grep -E '^alsa_input\.'; }
 
 default="$(pactl get-default-source 2>/dev/null || true)"

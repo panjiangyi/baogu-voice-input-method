@@ -6,7 +6,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
-engine = runpy.run_path(str(root / "voiceime-engine"))
+engine = runpy.run_path(str(root / "baogu-engine"))
 corrector = engine["LLMCorrector"]()
 if not corrector.enabled or not corrector._available:
     raise SystemExit("DeepSeek enabled in deploy, but API credentials are unavailable")

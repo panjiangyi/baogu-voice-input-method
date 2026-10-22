@@ -34,7 +34,7 @@ BUILTIN_GLOSSARIES = (
     ROOT / "hotwords" / "dental.txt",
 )
 COMPILED = Path(os.environ.get(
-    "VOICEIME_HOTWORDS_FILE",
+    "BAOGU_HOTWORDS_FILE",
     ROOT / "hotwords" / "compiled.txt",
 ))
 ASCII_RUN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9\s._+:/-]{1,80}")
@@ -42,7 +42,7 @@ ASCII_RUN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9\s._+:/-]{1,80}")
 
 def personal_glossary_path() -> Path:
     config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return config_home / "voiceime" / "hotwords.txt"
+    return config_home / "baogu" / "hotwords.txt"
 
 
 def _read_terms(path: Path) -> list[str]:
@@ -146,6 +146,17 @@ def _ascii_signature(text: str) -> str:
     return re.sub(r"[^a-z0-9+]", "", text.casefold())
 
 
+def _vocabulary_stamp() -> tuple:
+    """Cheap change token for the files that define the vocabulary."""
+    def mtime(path: Path) -> int:
+        try:
+            return path.stat().st_mtime_ns
+        except OSError:
+            return 0
+
+    return (mtime(personal_glossary_path()), mtime(COMPILED))
+
+
 def _edit_distance(a: str, b: str) -> int:
     if len(a) < len(b):
         a, b = b, a
@@ -184,14 +195,22 @@ class GlossaryCorrector:
         exact_terms: list[str] | None = None,
         contextual_aliases: list[tuple[str, str, tuple[str, ...]]] | None = None,
     ) -> None:
-        raw_terms = terms if terms is not None else load_terms()
-        raw_exact = exact_terms if exact_terms is not None else load_exact_terms()
+        # A caller that injects its own vocabulary means it exactly; only the
+        # file-backed corrector may re-read the glossary while running.
+        self._reloadable = terms is None and exact_terms is None
+        self._set_vocabulary(
+            load_terms() if terms is None else terms,
+            load_exact_terms() if exact_terms is None else exact_terms,
+        )
         self.aliases = aliases if aliases is not None else load_aliases()
         self.contextual_aliases = (
             contextual_aliases
             if contextual_aliases is not None
             else load_contextual_aliases()
         )
+        self._stamp = _vocabulary_stamp() if self._reloadable else None
+
+    def _set_vocabulary(self, raw_terms: list[str], raw_exact: list[str]) -> None:
         self.exact: dict[str, str] = {}
         for text in raw_exact:
             signature = _ascii_signature(text)
@@ -209,6 +228,21 @@ class GlossaryCorrector:
                 signature=signature,
                 words=tuple(text.casefold().split()),
             ))
+
+    def _reload_if_changed(self) -> None:
+        """Adopt hotwords added while the engine runs (Left Alt + W).
+
+        Left Alt + W appends to the personal list and rebuilds the compiled
+        glossary without restarting the service, so the vocabulary has to be
+        re-read on the next correction instead of only at startup.
+        """
+        if not self._reloadable:
+            return
+        stamp = _vocabulary_stamp()
+        if stamp == self._stamp:
+            return
+        self._stamp = stamp
+        self._set_vocabulary(load_terms(), load_exact_terms())
 
     @staticmethod
     def _threshold(length: int) -> float:
@@ -376,6 +410,7 @@ class GlossaryCorrector:
     def correct(self, text: str) -> str:
         if not text:
             return text
+        self._reload_if_changed()
         out: list[str] = []
         last = 0
         for match in ASCII_RUN_RE.finditer(text):
