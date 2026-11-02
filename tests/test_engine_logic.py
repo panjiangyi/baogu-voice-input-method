@@ -1,6 +1,7 @@
 """Unit tests for the event-driven Baogu IME engine."""
 import runpy
 from pathlib import Path
+import time
 import unittest
 from unittest.mock import patch, Mock
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -139,17 +140,136 @@ class ReleaseTailTests(unittest.TestCase):
 
 
 class FinalRecognizerConfigTests(unittest.TestCase):
+    def test_firered_variants_use_distinct_decoders(self):
+        import tempfile
+        import types
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as tmp:
+            model_dir = Path(tmp)
+            for name in ("model.int8.onnx", "encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"):
+                (model_dir / name).touch()
+            factory = Mock()
+            runtime = types.SimpleNamespace(OfflineRecognizer=factory)
+            for backend in ("firered2-ctc", "firered2-aed"):
+                with patch.dict("os.environ", {
+                    "BAOGU_FINAL_BACKEND": backend, "BAOGU_FINAL_MODEL": tmp,
+                }, clear=True), patch.dict("sys.modules", sherpa_onnx=runtime):
+                    recognizer = ENGINE["FinalRecognizer"]()
+                    self.assertIsNotNone(recognizer.recognizer)
+            factory.from_fire_red_asr_ctc.assert_called_once()
+            factory.from_fire_red_asr.assert_called_once()
+            self.assertIn("encoder", factory.from_fire_red_asr.call_args.kwargs)
+            self.assertIn("model", factory.from_fire_red_asr_ctc.call_args.kwargs)
+
     def test_second_pass_can_be_explicitly_disabled(self):
         with patch.dict("os.environ", {"BAOGU_FINAL_ENABLED": "0"}, clear=True):
             recognizer = ENGINE["FinalRecognizer"]()
         self.assertIsNone(recognizer.recognizer)
         self.assertFalse(recognizer.enabled)
 
+    def test_explicit_hotword_list_wins_over_the_file_vocabulary(self):
+        prompt = ENGINE["FinalRecognizer"]._hotword_prompt
+        with patch.dict("os.environ", {
+            "BAOGU_ASR_HOTWORDS": "DeepSeek,高内聚低耦合",
+        }, clear=True):
+            self.assertEqual(prompt(), "DeepSeek,高内聚低耦合")
+
+    def test_hotword_prompt_is_bounded_by_the_character_limit(self):
+        with patch.dict("os.environ", {
+            "BAOGU_ASR_HOTWORDS": "alara pro,DeepSeek,南明史",
+            "BAOGU_ASR_HOTWORDS_MAX_CHARS": "12",
+        }, clear=True):
+            self.assertEqual(
+                ENGINE["FinalRecognizer"]._hotword_prompt(), "alara pro")
+
+    def test_funasr_nano_receives_the_hotword_prompt(self):
+        import tempfile
+        import types
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as tmp:
+            model_dir = Path(tmp)
+            for name in ("encoder_adaptor.int8.onnx", "llm.int8.onnx",
+                         "embedding.int8.onnx"):
+                (model_dir / name).touch()
+            (model_dir / "Qwen3-0.6B").mkdir()
+            factory = Mock()
+            runtime = types.SimpleNamespace(OfflineRecognizer=factory)
+            with patch.dict("os.environ", {
+                "BAOGU_FINAL_BACKEND": "funasr-nano", "BAOGU_FINAL_MODEL": tmp,
+                "BAOGU_ASR_HOTWORDS": "DeepSeek",
+            }, clear=True), patch.dict("sys.modules", sherpa_onnx=runtime):
+                recognizer = ENGINE["FinalRecognizer"]()
+                self.assertIsNotNone(recognizer.recognizer)
+            factory.from_funasr_nano.assert_called_once()
+            self.assertEqual(
+                factory.from_funasr_nano.call_args.kwargs["hotwords"], "DeepSeek")
+
+    def test_funasr_nano_is_the_default_backend(self):
+        import tempfile
+        import types
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as tmp:
+            model_dir = Path(tmp)
+            for name in ("encoder_adaptor.int8.onnx", "llm.int8.onnx",
+                         "embedding.int8.onnx"):
+                (model_dir / name).touch()
+            (model_dir / "Qwen3-0.6B").mkdir()
+            factory = Mock()
+            runtime = types.SimpleNamespace(OfflineRecognizer=factory)
+            # No BAOGU_FINAL_BACKEND: the default backend decides.
+            with patch.dict("os.environ", {"BAOGU_FINAL_MODEL": tmp},
+                            clear=True), patch.dict("sys.modules", sherpa_onnx=runtime):
+                recognizer = ENGINE["FinalRecognizer"]()
+        self.assertEqual(recognizer.backend, "funasr-nano")
+        factory.from_funasr_nano.assert_called_once()
+
+    def test_missing_funasr_nano_model_falls_back_to_paraformer(self):
+        import tempfile
+        import types
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as tmp:
+            model_dir = Path(tmp)
+            for name in ("model.int8.onnx", "tokens.txt"):
+                (model_dir / name).touch()
+            factory = Mock()
+            runtime = types.SimpleNamespace(OfflineRecognizer=factory)
+            with patch.dict("os.environ", {
+                "BAOGU_FINAL_BACKEND": "funasr-nano", "BAOGU_FINAL_MODEL": tmp,
+            }, clear=True), patch.dict("sys.modules", sherpa_onnx=runtime):
+                recognizer = ENGINE["FinalRecognizer"]()
+        # The Fun-ASR-Nano files are missing, so the final pass must not be
+        # lost: it falls back to Paraformer and says so in the backend name.
+        self.assertEqual(recognizer.backend, "paraformer")
+        self.assertIsNotNone(recognizer.recognizer)
+        factory.from_paraformer.assert_called_once()
+        factory.from_funasr_nano.assert_not_called()
+
 
 class PreeditFinalTests(unittest.TestCase):
     class Identity:
         def correct(self, text):
             return text
+
+    def test_completed_final_is_rejected_if_new_utterance_started(self):
+        fn = ENGINE["_best_final_text"]
+        class Final:
+            recognizer = object()
+            def transcribe(self, _pcm):
+                fn.__globals__["start_request"] = 2
+                return "迟到的识别结果"
+        class ImmediateExecutor:
+            def submit(self, operation, *args):
+                future = Future()
+                future.set_result(operation(*args))
+                return future
+        diagnostics = {}
+        with patch.dict(fn.__globals__, current_session="s1", start_request=1,
+                        terminate=False, final_inflight=None, set_state=lambda _: None):
+            result = fn("s1", 1, "实时结果", bytes(32000), Final(),
+                        self.Identity(), self.Identity(), ImmediateExecutor(),
+                        diagnostics=diagnostics)
+        self.assertEqual(result, "实时结果")
+        self.assertEqual(diagnostics["final_reason"], "superseded")
 
     def test_queued_next_utterance_skips_final_wait(self):
         calls = []
@@ -230,6 +350,61 @@ class PreeditFinalTests(unittest.TestCase):
         self.assertEqual(result, "第二句实时结果")
         self.assertEqual(calls, [])
 
+    def test_long_utterance_still_uses_the_offline_pass(self):
+        calls = []
+
+        class Final:
+            recognizer = object()
+            def transcribe(self, _pcm):
+                calls.append("final")
+                return "长句最终结果"
+
+        fn = ENGINE["_best_final_text"]
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            with patch.dict(
+                fn.__globals__,
+                current_session="s1",
+                start_request=1,
+                FINAL_MAX_WAIT_SEC=1.2,
+                FINAL_MAX_AUDIO_SEC=90.0,
+                final_inflight=None,
+                final_inflight_started=None,
+            ):
+                result = fn(
+                    "s1", 1, "长句实时结果", b"x" * (16000 * 2 * 20),
+                    Final(), self.Identity(), self.Identity(), executor,
+                )
+        self.assertEqual(result, "长句最终结果")
+        self.assertEqual(calls, ["final"])
+
+    def test_over_budget_previous_final_does_not_block_the_next_utterance(self):
+        stale = Future()
+        calls = []
+
+        class Final:
+            recognizer = object()
+            def transcribe(self, _pcm):
+                calls.append("final")
+                return "第二句最终结果"
+
+        fn = ENGINE["_best_final_text"]
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            with patch.dict(
+                fn.__globals__,
+                current_session="s2",
+                start_request=2,
+                FINAL_MAX_WAIT_SEC=1.2,
+                FINAL_MAX_AUDIO_SEC=90.0,
+                final_inflight=stale,
+                final_inflight_started=time.monotonic() - 60.0,
+            ):
+                result = fn(
+                    "s2", 2, "第二句实时结果", b"x" * 32000,
+                    Final(), self.Identity(), self.Identity(), executor,
+                )
+        self.assertEqual(result, "第二句最终结果")
+        self.assertEqual(calls, ["final"])
+
     def test_fast_final_is_glossary_corrected_before_commit(self):
         class Final:
             recognizer = object()
@@ -259,6 +434,39 @@ class PreeditFinalTests(unittest.TestCase):
                     Final(), Glossary(), Punctuation(), executor,
                 )
         self.assertEqual(result, "看一下 pull request。")
+
+    def test_native_punctuation_backend_skips_the_punctuation_model(self):
+        class Final:
+            backend = "funasr-nano"
+            recognizer = object()
+
+            def transcribe(self, _pcm):
+                return "最后一条样本用于测试收尾。"
+
+        class Glossary:
+            def correct(self, text):
+                return text
+
+        class Punctuation:
+            def correct(self, text):
+                raise AssertionError("punctuation model must not run on top of "
+                                     "a backend that already punctuates")
+
+        fn = ENGINE["_best_final_text"]
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            with patch.dict(
+                fn.__globals__,
+                current_session="s1",
+                start_request=1,
+                FINAL_MAX_WAIT_SEC=1.2,
+                FINAL_MAX_AUDIO_SEC=90.0,
+                final_inflight=None,
+            ):
+                result = fn(
+                    "s1", 1, "最后一条样本用于测试收尾。", b"x" * 32000,
+                    Final(), Glossary(), Punctuation(), executor,
+                )
+        self.assertEqual(result, "最后一条样本用于测试收尾。")
 
 
 class SignalRequestTests(unittest.TestCase):

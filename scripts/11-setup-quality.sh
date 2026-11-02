@@ -25,12 +25,12 @@ FINAL_NAME="sherpa-onnx-paraformer-zh-2024-03-09"
 PUNCT_NAME="sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8"
 PUNCT_DIR="$ROOT/models/$PUNCT_NAME"
 
-echo "[1/2] Installing fast offline Paraformer final model..."
+echo "[1/3] Installing fast offline Paraformer final model..."
 download_asr "$FINAL_NAME"
 test -f "$ROOT/models/$FINAL_NAME/model.int8.onnx"
 test -f "$ROOT/models/$FINAL_NAME/tokens.txt"
 
-echo "[2/2] Installing deterministic Chinese/English punctuation model..."
+echo "[2/3] Installing deterministic Chinese/English punctuation model..."
 if [ ! -f "$PUNCT_DIR/model.int8.onnx" ]; then
   echo "  $PUNCT_NAME is missing or incomplete; downloading it now."
   tmp="$(mktemp --suffix=.tar.bz2)"
@@ -43,5 +43,12 @@ else
   echo "  $PUNCT_NAME is already installed; skipping download."
 fi
 test -f "$PUNCT_DIR/model.int8.onnx"
+
+# Fun-ASR-Nano is the default offline final model: it commits a more accurate
+# text on accented speech and accepts decoder-time hotwords, so the user's own
+# vocabulary reaches the recognizer. Paraformer above stays as the fallback
+# when this model is not installed.
+echo "[3/3] Installing Fun-ASR-Nano final model (default backend)..."
+bash "$ROOT/scripts/24-setup-final-backend.sh" funasr-nano
 
 echo "Quality models ready."

@@ -124,6 +124,21 @@ def load_terms() -> list[str]:
     )
 
 
+def load_recent_terms(count: int) -> list[str]:
+    """The most recently added personal terms, newest last.
+
+    The personal glossary is appended to whenever the user teaches the engine
+    a word, so its tail is the list of words the recognizer got wrong most
+    recently. A decoder-time prompt should carry those, not the hundreds of
+    older work terms: the LLM-style final backends decode slower with a long
+    prompt and lose accuracy when the prompt is full of irrelevant names.
+    """
+    if count <= 0:
+        return []
+    terms = _read_terms(personal_glossary_path())
+    return _dedupe(terms[-count:])
+
+
 def load_exact_terms() -> list[str]:
     """All canonical vocabulary usable for exact case/spacing normalization.
 

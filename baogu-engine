@@ -50,8 +50,13 @@ RELEASE_GRACE_SEC = max(0.0, min(10.0, float(os.environ.get(
 ))))
 RELEASE_SILENCE_SEC = 0.25
 OUTPUT_MODE = os.environ.get("BAOGU_OUTPUT_MODE", "preedit").strip().lower()
-FINAL_MAX_WAIT_SEC = float(os.environ.get("BAOGU_FINAL_MAX_WAIT", "1.2"))
-FINAL_MAX_AUDIO_SEC = float(os.environ.get("BAOGU_FINAL_MAX_AUDIO_SEC", "10.0"))
+_DEFAULT_FINAL_WAIT = "3.0" if os.environ.get("BAOGU_FINAL_BACKEND", "funasr-nano") in {
+    "qwen3", "firered2-aed", "firered2-ctc", "funasr-nano"
+} else "1.2"
+FINAL_MAX_WAIT_SEC = float(os.environ.get("BAOGU_FINAL_MAX_WAIT", _DEFAULT_FINAL_WAIT))
+# The offline pass handles long utterances too; the wait budget, not an
+# arbitrary duration cut, decides whether its result is still worth waiting for.
+FINAL_MAX_AUDIO_SEC = float(os.environ.get("BAOGU_FINAL_MAX_AUDIO_SEC", "90.0"))
 MIC_SCRIPT = ROOT / "baogu-mic"
 LOCK = RUNTIME / "baogu-engine.lock"
 STATE_FILE = RUNTIME / "baogu-engine.state"
@@ -70,6 +75,7 @@ start_request = 0
 stop_request = 0
 current_session = ""
 final_inflight = None
+final_inflight_started = None
 llm_inflight = None
 llm_executor = None
 
@@ -363,8 +369,30 @@ class PreeditPresenter:
         return True
 
 
+FINAL_WORKERS = 2
+final_running = 0
+# The offline pass runs while the streaming recognizer is still alive, and
+# onnxruntime keeps its worker threads spinning for a moment after every
+# decode. Fewer final threads leave more cores to the streaming model and
+# the punctuation model, which is what keeps the wait budget reachable.
+FINAL_THREADS = max(1, int(os.environ.get("BAOGU_FINAL_THREADS", "4")))
+# These backends emit their own punctuation; the local punctuation model would
+# only add a second set of marks on top of it.
+NATIVE_PUNCTUATION_BACKENDS = {"qwen3", "funasr-nano"}
+
+
+def _run_final(final_asr, pcm: bytes) -> str:
+    """Run one offline pass and keep the running count in sync."""
+    global final_running
+    final_running += 1
+    try:
+        return final_asr.transcribe(pcm)
+    finally:
+        final_running -= 1
+
+
 class FinalRecognizer:
-    """Offline acoustic final pass; Qwen supports decoder-time hotwords."""
+    """Offline acoustic final pass; the LLM-style backends take hotwords."""
 
     def __init__(self) -> None:
         self.recognizer = None
@@ -375,13 +403,33 @@ class FinalRecognizer:
             log("final ASR disabled")
             return
 
-        self.backend = os.environ.get("BAOGU_FINAL_BACKEND", "paraformer").lower()
+        # Fun-ASR-Nano is the default: on the natural-accent set it commits a
+        # markedly more accurate final text than Paraformer, and it accepts
+        # decoder-time hotwords, so the user's own vocabulary reaches the
+        # recognizer instead of only the post-hoc glossary.
+        self.backend = os.environ.get("BAOGU_FINAL_BACKEND", "funasr-nano").lower()
         if self.backend == "qwen3":
             self._load_qwen3()
             return
+        if self.backend in {"firered2-ctc", "firered2-aed"}:
+            self._load_firered2()
+            return
+        if self.backend == "funasr-nano":
+            self._load_funasr_nano()
+            if self.recognizer is None:
+                # The model is a 1 GB download. If it is missing, keep the
+                # final pass alive on Paraformer instead of degrading to the
+                # streaming text only.
+                log("Fun-ASR-Nano unavailable; falling back to the Paraformer final pass")
+                self.backend = "paraformer"
+                self._load_paraformer()
+            return
         if self.backend != "paraformer":
             raise ValueError(f"Unknown BAOGU_FINAL_BACKEND: {self.backend}")
+        self._load_paraformer()
 
+    def _load_paraformer(self) -> None:
+        """The small offline model; a safe fallback and the old default."""
         model_dir = Path(os.environ.get(
             "BAOGU_FINAL_MODEL",
             ROOT / "models" / "sherpa-onnx-paraformer-zh-2024-03-09",
@@ -396,11 +444,100 @@ class FinalRecognizer:
             self.recognizer = sherpa_onnx.OfflineRecognizer.from_paraformer(
                 paraformer=str(model),
                 tokens=str(tokens),
-                num_threads=max(1, min(4, (os.cpu_count() or 2) // 2)),
+                num_threads=max(1, min(FINAL_THREADS, (os.cpu_count() or 2) // 2)),
             )
             log(f"loaded offline Paraformer final model from {model_dir}")
         except Exception as ex:
             log(f"failed to load final ASR model: {ex!r}")
+            self.recognizer = None
+
+    def _load_firered2(self) -> None:
+        """Keep full AED and the faster CTC-only export distinguishable."""
+        ctc = self.backend == "firered2-ctc"
+        model_dir = Path(os.environ.get(
+            "BAOGU_FINAL_MODEL",
+            ROOT / "models" / (
+                "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25" if ctc else
+                "sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26"
+            ),
+        ))
+        files = ("model.int8.onnx", "tokens.txt") if ctc else (
+            "encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt")
+        if not all((model_dir / name).is_file() for name in files):
+            log(f"{self.backend} model incomplete; streaming result will be used")
+            return
+        try:
+            import sherpa_onnx
+            common = dict(tokens=str(model_dir / "tokens.txt"), num_threads=FINAL_THREADS)
+            if ctc:
+                self.recognizer = sherpa_onnx.OfflineRecognizer.from_fire_red_asr_ctc(
+                    model=str(model_dir / "model.int8.onnx"), **common)
+            else:
+                self.recognizer = sherpa_onnx.OfflineRecognizer.from_fire_red_asr(
+                    encoder=str(model_dir / "encoder.int8.onnx"),
+                    decoder=str(model_dir / "decoder.int8.onnx"), **common)
+            log(f"loaded {self.backend} final model from {model_dir}")
+        except Exception as ex:
+            log(f"failed to load {self.backend}: {ex!r}")
+            self.recognizer = None
+
+    @staticmethod
+    def _hotword_prompt() -> str:
+        """Decoder-time vocabulary hints for the LLM-style final backends.
+
+        An explicit BAOGU_ASR_HOTWORDS list wins over the file vocabulary: the
+        personal glossary is large and mostly work terms, so a focused list is
+        the only way to bias the decoder towards the few words the user
+        actually says. Without one, the prompt carries the terms the user
+        added most recently (the tail of the personal glossary) followed by
+        the curated priority list, bounded by BAOGU_ASR_HOTWORDS_MAX_CHARS.
+        """
+        limit = max(0, int(os.environ.get("BAOGU_ASR_HOTWORDS_MAX_CHARS", "200")))
+        recent = max(0, int(os.environ.get("BAOGU_ASR_HOTWORDS_RECENT", "8")))
+        explicit = os.environ.get("BAOGU_ASR_HOTWORDS", "").strip()
+        if explicit:
+            terms = [part.strip() for part in explicit.split(",") if part.strip()]
+        else:
+            from baogu_glossary import load_recent_terms, load_terms
+            terms = load_recent_terms(recent) + load_terms()
+        selected, seen = [], set()
+        for term in terms:
+            if term.casefold() in seen or "," in term:
+                continue
+            if len(",".join(selected + [term])) > limit:
+                break
+            selected.append(term)
+            seen.add(term.casefold())
+        return ",".join(selected)
+
+    def _load_funasr_nano(self) -> None:
+        """Fun-ASR-Nano: Paraformer encoder plus a small decoder language model."""
+        model_dir = Path(os.environ.get(
+            "BAOGU_FINAL_MODEL",
+            ROOT / "models" / "sherpa-onnx-funasr-nano-int8-2025-12-30",
+        ))
+        required = ("encoder_adaptor.int8.onnx", "llm.int8.onnx", "embedding.int8.onnx")
+        tokenizer = model_dir / "Qwen3-0.6B"
+        missing = [name for name in required if not (model_dir / name).is_file()]
+        if missing or not tokenizer.is_dir():
+            log(f"Fun-ASR-Nano final model incomplete ({', '.join(missing) or 'tokenizer'}); "
+                "streaming result will be used")
+            return
+        try:
+            import sherpa_onnx
+            hotwords = self._hotword_prompt()
+            self.recognizer = sherpa_onnx.OfflineRecognizer.from_funasr_nano(
+                encoder_adaptor=str(model_dir / "encoder_adaptor.int8.onnx"),
+                llm=str(model_dir / "llm.int8.onnx"),
+                embedding=str(model_dir / "embedding.int8.onnx"),
+                tokenizer=str(tokenizer),
+                num_threads=FINAL_THREADS,
+                hotwords=hotwords,
+            )
+            log(f"loaded funasr-nano final model from {model_dir} "
+                f"with {len(hotwords.split(',')) if hotwords else 0} acoustic hotwords")
+        except Exception as ex:
+            log(f"failed to load funasr-nano: {ex!r}")
             self.recognizer = None
 
     def _load_qwen3(self) -> None:
@@ -415,29 +552,21 @@ class FinalRecognizer:
             return
         try:
             import sherpa_onnx
-            from baogu_glossary import load_terms
             # Keep prompt bounded; user vocabulary takes precedence. Huge
             # dictionaries consume decoder context and dilute useful hints.
-            terms = load_terms()
-            selected, seen = [], set()
-            for term in terms:
-                if term.casefold() in seen or "," in term:
-                    continue
-                if len(",".join(selected + [term])) > 1500:
-                    break
-                selected.append(term)
-                seen.add(term.casefold())
+            hotwords = self._hotword_prompt()
             self.recognizer = sherpa_onnx.OfflineRecognizer.from_qwen3_asr(
                 conv_frontend=str(model_dir / "conv_frontend.onnx"),
                 encoder=str(model_dir / "encoder.int8.onnx"),
                 decoder=str(model_dir / "decoder.int8.onnx"),
                 tokenizer=str(model_dir / "tokenizer"),
-                num_threads=4,
+                num_threads=FINAL_THREADS,
                 max_total_len=2048,
                 max_new_tokens=512,
-                hotwords=",".join(selected),
+                hotwords=hotwords,
             )
-            log(f"loaded Qwen3 final model with {len(selected)} acoustic hotwords")
+            log(f"loaded Qwen3 final model with "
+                f"{len(hotwords.split(',')) if hotwords else 0} acoustic hotwords")
         except Exception as ex:
             log(f"failed to load Qwen3 final model: {ex!r}")
             self.recognizer = None
@@ -1150,17 +1279,28 @@ def _best_final_text(
     executor: ThreadPoolExecutor,
     llm: LLMCorrector | None = None,
     context: dict[str, str] | None = None,
+    diagnostics: dict | None = None,
 ) -> str:
     """Return a bounded-latency final candidate without queueing heavy work."""
-    global current_session, start_request, final_inflight
+    global current_session, start_request, final_inflight, final_inflight_started
     candidate = streaming_text
     has_native_punctuation = False
     audio_sec = len(pcm) / float(SAMPLE_RATE * 2) if pcm else 0.0
+    final_started = time.monotonic()
+    reason = "unavailable"
+    if not pcm:
+        reason = "no-audio"
+    elif session != current_session or start_request > request_id or terminate:
+        reason = "superseded"
+    elif audio_sec > max(0.0, FINAL_MAX_AUDIO_SEC):
+        reason = "duration-limit"
 
     can_run_final = (
         final_asr.recognizer is not None
         and pcm
+        and session == current_session
         and start_request <= request_id
+        and not terminate
         and audio_sec <= max(0.0, FINAL_MAX_AUDIO_SEC)
     )
 
@@ -1170,32 +1310,58 @@ def _best_final_text(
         except Exception as ex:
             log(f"previous final ASR finished with error: {ex!r}")
         final_inflight = None
+        final_inflight_started = None
 
     if can_run_final and final_inflight is not None:
-        log("final ASR still busy; using streaming result")
-        can_run_final = False
+        # A previous pass that already blew past its wait budget can no longer
+        # be adopted, so it must not hold back the next utterance either.
+        started_at = final_inflight_started
+        stale = (started_at is not None
+                 and time.monotonic() - started_at > max(0.0, FINAL_MAX_WAIT_SEC))
+        if stale and final_running >= FINAL_WORKERS:
+            # Both workers are busy with passes that already missed their
+            # budget; queueing another one would only add work nobody waits for.
+            stale = False
+        if stale:
+            log("previous final ASR exceeded its budget; starting a fresh one")
+            final_inflight = None
+            final_inflight_started = None
+        else:
+            log("final ASR still busy; using streaming result")
+            can_run_final = False
+            reason = "busy"
 
     if can_run_final:
         set_state("finalizing")
-        future = executor.submit(final_asr.transcribe, pcm)
+        future = executor.submit(_run_final, final_asr, pcm)
         final_inflight = future
+        final_inflight_started = time.monotonic()
         deadline = time.monotonic() + max(0.0, FINAL_MAX_WAIT_SEC)
         while not future.done() and time.monotonic() < deadline:
-            if session != current_session or start_request > request_id:
+            if session != current_session or start_request > request_id or terminate:
                 log("new utterance queued; stop waiting for final ASR")
                 break
             time.sleep(0.01)
 
-        if future.done():
+        if session != current_session or start_request > request_id or terminate:
+            future.cancel()
+            reason = "superseded"
+        elif future.done():
             final_inflight = None
             try:
                 refined = future.result()
                 if refined:
                     candidate = refined
-                    has_native_punctuation = getattr(final_asr, "backend", "") == "qwen3"
+                    has_native_punctuation = (
+                        getattr(final_asr, "backend", "") in NATIVE_PUNCTUATION_BACKENDS)
+                    reason = "accepted"
+                else:
+                    reason = "empty"
             except Exception as ex:
+                reason = "error"
                 log(f"final ASR failed; keeping streaming result: {ex!r}")
         else:
+            reason = "timeout"
             future.cancel()
             log(
                 f"final ASR exceeded {FINAL_MAX_WAIT_SEC:.2f}s or was superseded; "
@@ -1207,9 +1373,25 @@ def _best_final_text(
             f"{FINAL_MAX_AUDIO_SEC:.2f}s; using streaming result"
         )
 
+    if diagnostics is not None:
+        diagnostics.update(
+            final_reason=reason,
+            final_wait_sec=time.monotonic() - final_started,
+            final_backend=getattr(final_asr, "backend", "unknown"),
+            # Keep every stage visible: model output, glossary, punctuation.
+            # Otherwise a glossary fix is counted as model accuracy.
+            final_raw=candidate,
+        )
+    log(f"final selection: backend={getattr(final_asr, 'backend', 'unknown')} "
+        f"reason={reason} audio_sec={audio_sec:.3f} "
+        f"wait_sec={time.monotonic() - final_started:.3f}")
     candidate = glossary.correct(candidate)
+    if diagnostics is not None:
+        diagnostics["final_glossary"] = candidate
     if not has_native_punctuation:
         candidate = punctuation.correct(candidate) or candidate
+    if diagnostics is not None:
+        diagnostics["final_punctuation"] = candidate
     if llm is not None and llm_enabled(llm.enabled) and candidate:
         if session != current_session or start_request > request_id or terminate:
             return candidate
@@ -1570,7 +1752,8 @@ def main() -> int:
     llm = LLMCorrector()
     glossary = GlossaryCorrector()
     punctuation = PunctuationRestorer()
-    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="baogu-final")
+    # Two workers so an over-budget long pass cannot block the next utterance.
+    executor = ThreadPoolExecutor(max_workers=FINAL_WORKERS, thread_name_prefix="baogu-final")
 
     READY_FILE.write_text(str(os.getpid()) + "\n", encoding="utf-8")
     set_state("suspended")

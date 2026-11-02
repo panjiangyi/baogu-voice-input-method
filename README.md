@@ -5,7 +5,8 @@
 # Baogu IME (苞谷输入法) — Ubuntu Chinese & Mixed Chinese/English Voice Input
 
 > **PR #6 recommended architecture**: Sherpa bilingual streaming Paraformer real-time preedit →
-> offline Paraformer large fast final → deterministic glossary correction →
+> offline Fun-ASR-Nano final (with the user's own vocabulary as decoder hotwords) →
+> deterministic glossary correction →
 > local safe punctuation → optional DeepSeek correction → single Fcitx5 commit.
 
 Targets **Ubuntu 24.04 + GNOME + Fcitx5**; the PTT hotkey listener currently focuses on X11.
@@ -139,6 +140,13 @@ journalctl --user -u baogu-corrector  -f   # Legacy FireRed + local corrector on
 | `BAOGU_HOTWORD_ENABLED` | 1 (default) = enable the one-key hotword teach with Alt + W |
 | `BAOGU_HOTWORD_KEYCODE` / `BAOGU_HOTWORD_MODIFIER_KEYCODE` | Hotword hotkey keycodes (default 25 = `w`, 64 = left Alt; keycodes come from the X keymap, which may not match the PC105 reference — check with `xmodmap -pke`) |
 | `BAOGU_HOTWORD_MAX_CHARS` | Longest selection accepted as one hotword (default 80) |
+| `BAOGU_FINAL_BACKEND` | Offline final model: `funasr-nano` (default) / `paraformer` / `qwen3` / `firered2-aed` / `firered2-ctc` |
+| `BAOGU_FINAL_MAX_WAIT` | Seconds the commit waits for the offline final (default 3.0; 1.2 if `BAOGU_FINAL_BACKEND=paraformer`) |
+| `BAOGU_FINAL_MAX_AUDIO_SEC` | Hard cut-off for the offline final (default 90s; longer speech still uses the offline model inside the wait budget) |
+| `BAOGU_ASR_HOTWORDS_MAX_CHARS` | Character budget for the decoder hotword prompt of the LLM-style final backends (Qwen3-ASR, Fun-ASR-Nano) (default 200; 0 disables it) |
+| `BAOGU_ASR_HOTWORDS` | Explicit comma-separated hotword prompt for the LLM-style final backends; wins over the file vocabulary |
+| `BAOGU_ASR_HOTWORDS_RECENT` | How many of the most recently added personal terms go into that prompt (default 8) |
+| `BAOGU_FINAL_THREADS` | Threads for the offline final model (default 4; fewer leaves more cores to the streaming model) |
 
 Secrets are read only from the project root `.env` (mode 600).
 
@@ -179,7 +187,7 @@ bash native/install.sh
 fcitx5 -r
 
 # 2. One-shot install of the full production ASR stack:
-#    streaming Paraformer + offline final Paraformer + local punctuation model
+#    streaming Paraformer + offline final Fun-ASR-Nano + local punctuation model
 bash scripts/09-setup-sherpa.sh
 
 # 3. Optional DeepSeek post-processing
@@ -214,13 +222,14 @@ bash scripts/10-install-service.sh
    - If the audio is still close to recent speech volume, trailing audio is captured; the
      recorder stops after about 0.25s of continuous silence, capped at 3s of total extension
      (configurable via `BAOGU_RELEASE_GRACE_SEC`; 0 stops immediately).
-   - Then wait up to 1.2s for the offline Paraformer final, followed by glossary normalization
+   - Then wait up to 3s for the offline Fun-ASR-Nano final, followed by glossary normalization
      and local safe punctuation.
    - If DeepSeek is enabled, "纠错中" / "Correcting" is shown while waiting (default up to
      15s), then a single commit happens and the engine returns to idle.
 3. Pressing the key again during wrap-up ends the current sentence early and starts the next.
-4. Fallback to streaming-only triggers: sentences longer than 10s, final timeout, or the
-   previous final still running.
+4. Fallback to streaming-only triggers: the final pass exceeded its wait budget, or the
+   previous final is still running inside that budget. Long sentences are no longer
+   skipped; the wait budget decides instead of an arbitrary duration cut.
 
 ### On-screen indicators
 
@@ -254,7 +263,7 @@ Real-time streaming Paraformer
         ↓
 Fcitx preedit (preview only, never into app text)
         ↓ on key release
-Offline Paraformer large (wait at most 1.2s)
+Offline Fun-ASR-Nano final, hotword prompt from the user's vocabulary (wait at most 3s)
         ↓
 Deterministic glossary correction
         ↓
@@ -265,9 +274,12 @@ Single CommitString
 
 ### Protection rules
 
-- **Final takes more than 1.2s**: immediately fall back to streaming.
-- **Speech longer than 10s**: do not start the offline final.
-- **At most one final inference at a time**; no queueing.
+- **Final takes longer than its wait budget** (1.2s for Paraformer, 3s for Qwen3-ASR /
+  FireRedASR2 / Fun-ASR-Nano): immediately fall back to streaming.
+- **Long speech**: the offline final still runs; only the wait budget can reject it
+  (`BAOGU_FINAL_MAX_AUDIO_SEC`, default 90s, is the hard cut-off).
+- **At most one final inference per utterance**; a final that already blew its budget
+  cannot block the next utterance.
 - **Next PTT has already started**: stop waiting for the previous final.
 - **Focus / input field / session changes**: final commit fails closed.
 - **Final/punctuation model missing**: streaming fallback still works normally.
@@ -652,7 +664,8 @@ latency log only records character counts, not recognized content; use
 | Model | Role | Size |
 |---|---|---|
 | streaming Paraformer (Sherpa, bilingual) | Real-time partial → preedit | Smaller, resident in memory |
-| offline Paraformer large | Post-release final → commit | Larger, loaded on demand |
+| Fun-ASR-Nano (sherpa-onnx, default) | Post-release final → commit, takes decoder hotwords | ~1 GB, loaded on demand |
+| offline Paraformer large | Fallback final when Fun-ASR-Nano is absent | Larger, loaded on demand |
 | Local punctuation model | Deterministic punctuation after final | Smaller |
 | FireRedASR2 (legacy) | Optional final second-pass correction | Larger |
 | DeepSeek `deepseek-v4-flash` | Optional cloud post-processing | Cloud, no local resource |
@@ -758,7 +771,7 @@ directly into the current input field without copy-paste**.
 # 苞谷输入法 — Ubuntu 中文 / 中英混合语音输入
 
 > **PR #6 推荐架构**：Sherpa 双语 streaming Paraformer 实时 preedit →
-> offline Paraformer large 快速 final → 领域词库确定性纠正 →
+> offline Fun-ASR-Nano final（把用户自己的词表作为解码器热词）→ 领域词库确定性纠正 →
 > 本地安全标点 → 可选 DeepSeek 纠错 → Fcitx5 一次性 commit。
 
 适用于 **Ubuntu 24.04 + GNOME + Fcitx5**；PTT 热键监听当前以 X11 为主。
@@ -891,6 +904,13 @@ journalctl --user -u baogu-corrector  -f   # 仅 legacy FireRed + 本地纠错�
 | `BAOGU_HOTWORD_ENABLED` | 1（默认）= 启用 Alt + W 一键加常用词 |
 | `BAOGU_HOTWORD_KEYCODE` / `BAOGU_HOTWORD_MODIFIER_KEYCODE` | 常用词快捷键 keycode（默认 25 = `w`，64 = 左 Alt；keycode 取自 X keymap，未必等同 PC105 标准表，用 `xmodmap -pke` 查） |
 | `BAOGU_HOTWORD_MAX_CHARS` | 单个热词接受的最长选区长度（默认 80） |
+| `BAOGU_FINAL_BACKEND` | 离线 final 模型：`funasr-nano`（默认）/ `paraformer` / `qwen3` / `firered2-aed` / `firered2-ctc` |
+| `BAOGU_FINAL_MAX_WAIT` | 提交时等待离线 final 的秒数（默认 3.0；`BAOGU_FINAL_BACKEND=paraformer` 时为 1.2） |
+| `BAOGU_FINAL_MAX_AUDIO_SEC` | 离线 final 的硬上限（默认 90 秒；更长语音仍走离线模型，由等待预算决定是否采用） |
+| `BAOGU_ASR_HOTWORDS_MAX_CHARS` | LLM 类 final 后端（Qwen3-ASR、Fun-ASR-Nano）解码器热词提示的字符预算（默认 200，设为 0 关闭） |
+| `BAOGU_ASR_HOTWORDS` | 给 LLM 类 final 后端的显式热词列表（逗号分隔），优先于文件词表 |
+| `BAOGU_ASR_HOTWORDS_RECENT` | 该提示里放入最近加入的个人常用词条数（默认 8） |
+| `BAOGU_FINAL_THREADS` | 离线 final 模型的线程数（默认 4；调小可给流式模型让出更多核心） |
 
 密钥只从项目根目录的 `.env` 读取（权限 600）。
 
@@ -926,7 +946,7 @@ bash native/install.sh
 fcitx5 -r
 
 # 2. 一次安装完整生产 ASR 栈：
-#    streaming Paraformer + offline final Paraformer + 本地标点模型
+#    streaming Paraformer + offline final Fun-ASR-Nano + 本地标点模型
 bash scripts/09-setup-sherpa.sh
 
 # 3. 可选 DeepSeek 后处理
@@ -957,10 +977,11 @@ bash scripts/10-install-service.sh
 2. **松开右 Alt**：
    - 立即关闭录音声波，显示「识别优化中」。
    - 若仍有接近最近说话音量的声音，继续收取尾音；连续安静约 0.25 秒即停止，最多延长 3 秒（`BAOGU_RELEASE_GRACE_SEC` 可配置，设为 0 则立即停）。
-   - 随后最多等待 1.2 秒的 offline Paraformer final，再应用词库规范化和本地安全标点。
+   - 随后最多等待 3 秒的 offline Fun-ASR-Nano final，再应用词库规范化和本地安全标点。
    - 如启用 DeepSeek，还会显示「纠错中」并等待结果（默认最多 15 秒），最后只 commit 一次，引擎回到待机。
 3. **收尾期间再次按键**会提前结束本句并开始下一句。
-4. 触发回退（streaming 优先）的条件：长句超过 10 秒、final 超时、上一条 final 仍在运行。
+4. 触发回退（streaming 优先）的条件：final 超出等待预算，或上一条 final 仍在预算内运行。
+   长句不再被直接跳过，改由等待预算决定是否采用 final 结果。
 
 ### 屏幕提示
 
@@ -989,7 +1010,7 @@ PR #6 改成：
         ↓
 Fcitx preedit（只是预览，不进应用正文）
         ↓ 松键
-offline Paraformer large（最多等 1.2 秒）
+offline Fun-ASR-Nano final，热词提示来自用户词表（最多等 3 秒）
         ↓
 确定性 glossary correction
         ↓
@@ -1000,9 +1021,9 @@ offline Paraformer large（最多等 1.2 秒）
 
 ### 保护规则
 
-- **final 超过 1.2 秒**：立即回退 streaming；
-- **语音超过 10 秒**：不启动 offline final；
-- **同一时间最多一个 final inference**，不允许积压；
+- **final 超过等待预算**（Paraformer 1.2 秒，Qwen3-ASR / FireRedASR2 / Fun-ASR-Nano 3 秒）：立即回退 streaming；
+- **长语音**：offline final 仍会执行，只由等待预算决定是否采用（硬上限 `BAOGU_FINAL_MAX_AUDIO_SEC`，默认 90 秒）；
+- **每句最多一次 final inference**，已超预算的 final 不再阻塞下一句；
 - **下一句 PTT 已经开始**：停止等待上一句 final；
 - **焦点/输入框/session 改变**：最终提交 fail closed；
 - **final/punctuation 模型缺失**：仍可正常使用 streaming fallback。
@@ -1410,7 +1431,8 @@ python3 -m unittest discover -s tests -v   # 不录音、不向桌面打字
 | 模型 | 角色 | 大小 |
 |---|---|---|
 | streaming Paraformer (Sherpa, 中英双语) | 实时 partial → preedit | 较小，常驻内存 |
-| offline Paraformer large | 松键后 final → commit | 较大，按需加载 |
+| Fun-ASR-Nano (sherpa-onnx，默认) | 松键后 final → commit，支持解码器热词 | 约 1 GB，按需加载 |
+| offline Paraformer large | Fun-ASR-Nano 缺失时的 final 兜底 | 较大，按需加载 |
 | 本地 punctuation model | final 后确定性标点 | 较小 |
 | FireRedASR2 (legacy) | final 第二遍纠错，可选 | 较大 |
 | DeepSeek `deepseek-v4-flash` | 云端后处理，可选 | 云端，无需本地资源 |

@@ -11,8 +11,9 @@ llm_timeout="${BAOGU_LLM_TIMEOUT:-15.0}"
 deepseek_model="${DEEPSEEK_MODEL:-deepseek-v4-flash}"
 output_mode="${BAOGU_OUTPUT_MODE:-preedit}"
 final_enabled="${BAOGU_FINAL_ENABLED:-1}"
-final_wait="${BAOGU_FINAL_MAX_WAIT:-1.2}"
-final_audio="${BAOGU_FINAL_MAX_AUDIO_SEC:-10.0}"
+final_backend="${BAOGU_FINAL_BACKEND:-funasr-nano}"
+final_wait="${BAOGU_FINAL_MAX_WAIT:-3.0}"
+final_audio="${BAOGU_FINAL_MAX_AUDIO_SEC:-90.0}"
 punctuation_enabled="${BAOGU_PUNCTUATION_ENABLED:-1}"
 ask_enabled="${BAOGU_ASK_ENABLED:-1}"
 ask_keycode="${BAOGU_ASK_KEYCODE:-38}"
@@ -27,6 +28,7 @@ for setting in $service_env; do
     DEEPSEEK_MODEL=*) deepseek_model="${setting#*=}" ;;
     BAOGU_OUTPUT_MODE=*) output_mode="${setting#*=}" ;;
     BAOGU_FINAL_ENABLED=*) final_enabled="${setting#*=}" ;;
+    BAOGU_FINAL_BACKEND=*) final_backend="${setting#*=}" ;;
     BAOGU_FINAL_MAX_WAIT=*) final_wait="${setting#*=}" ;;
     BAOGU_FINAL_MAX_AUDIO_SEC=*) final_audio="${setting#*=}" ;;
     BAOGU_PUNCTUATION_ENABLED=*) punctuation_enabled="${setting#*=}" ;;
@@ -45,7 +47,7 @@ fi
 echo "daemon:    $(systemctl --user is-active "$UNIT" 2>/dev/null || echo unknown)"
 echo "overlay:   $(systemctl --user is-active baogu-overlay.service 2>/dev/null || echo unknown)"
 echo "engine:    $engine output=$output_mode"
-echo "final:     enabled=$final_enabled max_wait=${final_wait}s max_audio=${final_audio}s punctuation=$punctuation_enabled"
+echo "final:     backend=$final_backend enabled=$final_enabled max_wait=${final_wait}s max_audio=${final_audio}s punctuation=$punctuation_enabled"
 echo "llm:       enabled=$llm_enabled kill_switch=$llm_disabled mode=$llm_mode timeout=${llm_timeout}s"
 echo "ask:       enabled=$ask_enabled key=$ask_modifier+$ask_keycode (left Alt + A)"
 echo "state:     $(baogu_state)  (pid ${pid:--})"

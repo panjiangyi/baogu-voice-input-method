@@ -2,6 +2,7 @@
 from pathlib import Path
 import sys
 import unittest
+import unittest.mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -121,6 +122,26 @@ class GlossaryCorrectorTests(unittest.TestCase):
             self.c.correct("AI 的力量很重要"),
             "AI 的力量很重要",
         )
+
+
+class RecentTermTests(unittest.TestCase):
+    """The decoder prompt should carry the words the user added last."""
+
+    def test_recent_terms_are_the_tail_of_the_personal_glossary(self):
+        import os
+        import tempfile
+        from baogu_glossary import load_recent_terms
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "baogu"
+            config.mkdir()
+            (config / "hotwords.txt").write_text(
+                "# comment\nold term\nnewer term\nnewest term\n", encoding="utf-8")
+            with unittest.mock.patch.dict(
+                os.environ, {"XDG_CONFIG_HOME": tmp}, clear=False):
+                self.assertEqual(
+                    load_recent_terms(2), ["newer term", "newest term"])
+                self.assertEqual(
+                    load_recent_terms(0), [])
 
 
 if __name__ == "__main__":
