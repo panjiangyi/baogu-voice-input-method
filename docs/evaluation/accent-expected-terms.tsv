@@ -1,0 +1,63 @@
+# Intended terms per case, for the natural-accent set.
+#
+# One term per line: set, TAB, case id, TAB, term. The term is a string that
+# must appear in the recognised text of that case.
+#
+# The point of this file is that it does not depend on the reference text of
+# the two disputed free-speech cases (S-007, S-008), whose reference was
+# transcribed from the Paraformer output. The terms below are the intended
+# spellings, so a backend that recognises the word the user actually said is
+# credited even when the surrounding reference is wrong.
+#
+# Terms are copied from docs/evaluation/accent-targets.txt (accent-sensitive
+# words) plus the code and product names used in the read sentences.
+accent-nl-nasal	S-001	那里
+accent-nl-nasal	S-001	拿
+accent-nl-nasal	S-002	链接
+accent-nl-nasal	S-002	检查
+accent-nl-nasal	S-002	连接
+accent-nl-nasal	S-003	楼下
+accent-nl-nasal	S-003	牛奶
+accent-nl-nasal	S-003	明天
+accent-nl-nasal	S-003	通知
+accent-nl-nasal	S-004	讨论
+accent-nl-nasal	S-004	功能
+accent-nl-nasal	S-005	重新
+accent-nl-nasal	S-005	启动
+accent-nl-nasal	S-006	确认
+accent-nl-nasal	S-006	金额
+accent-nl-nasal	S-007	成功
+accent-nl-nasal	S-007	安排
+accent-nl-nasal	S-008	录音
+accent-nl-nasal	S-008	声音
+accent-nl-nasal	S-008	内容
+accent-nl-nasal	S-009	Linear issue
+accent-nl-nasal	S-010	network error
+accent-nl-nasal	S-011	pull request
+accent-nl-nasal	S-011	检查
+accent-nl-nasal	S-012	Python
+accent-nl-nasal	S-012	日志
+accent-nl-nasal	S-013	联系
+accent-nl-nasal	S-013	明天
+accent-nl-nasal	S-014	请求
+accent-nl-nasal	S-014	重新
+accent-nl-nasal	S-014	检查
+accent-nl-nasal	S-015	原来
+accent-nl-nasal	S-015	保留
+accent-nl-nasal	S-016	录音
+accent-nl-nasal	S-016	降噪
+accent-nl-nasal	S-017	明天
+accent-nl-nasal	S-017	讨论
+accent-nl-nasal	S-017	安排
+accent-nl-nasal	S-018	确认
+accent-nl-nasal	S-018	内容
+accent-nl-nasal	S-018	人员
+accent-nl-nasal	S-019	GitHub Actions
+accent-nl-nasal	S-020	session
+accent-nl-nasal	S-020	重新
+accent-spontaneous	S-001	alara pro
+accent-spontaneous	S-003	热干面
+accent-spontaneous	S-005	南明史
+accent-spontaneous	S-006	过山车
+accent-spontaneous	S-007	高内聚低耦合
+accent-spontaneous	S-008	deepseek

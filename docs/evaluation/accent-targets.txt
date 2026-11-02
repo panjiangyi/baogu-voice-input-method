@@ -1,0 +1,41 @@
+# Target words for the natural-accent acceptance set.
+#
+# One concept per line. Alternatives separated by "|" are equally intended
+# spellings; everything else must be recognised as written, because the point
+# of the set is that the recognizer resolves the intended word from the
+# acoustics and the context instead of echoing the accent.
+#
+# n/l initials
+那里
+拿
+那家
+牛奶
+内容
+链接
+连接
+检查
+联系
+录音
+登录
+楼下
+讨论
+#
+# front/back nasal finals
+明天
+计划
+人员
+声音
+确认
+金额
+原来
+重新
+成功
+安排
+#
+# Words from the free-speech set that the recognizer already mangled once.
+# Only the intended spelling is listed: the wrong form must show up as a miss.
+南明史
+高内聚低耦合
+deepseek
+过山车
+热干面

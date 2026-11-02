@@ -1,0 +1,15 @@
+# Spontaneous speech cues. Do NOT read a prepared sentence for these.
+# For each cue, say whatever comes to mind, in one go, the way you would
+# actually talk to a colleague. Aim for 10-20 seconds per cue.
+# At the transcript prompt, type what you actually said (this becomes the
+# reference); press Enter only if the cue text is itself what you said.
+今天手上主要在忙什么事情，随便说说
+说一件最近让你有点烦心或者好笑的事
+讲讲你今天午饭吃了什么，为什么吃这个
+描述一下你现在待的这个地方
+说说最近在看什么书或者什么视频
+讲一件你以前做过、现在不会再来一次的事
+说说你对一个技术方案的看法，用平常说话的方式
+讲讲今天用输入法的时候遇到的一个具体问题
+说说如果明天不用上班，你会怎么安排这一天
+随便说说你老家那边最近的情况，或者天气
