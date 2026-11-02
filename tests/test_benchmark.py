@@ -10,6 +10,12 @@ SUITE = runpy.run_path(str(ROOT / "scripts/08-offline-suite.py"))
 
 
 class BenchmarkMetricTests(unittest.TestCase):
+    def test_mixed_error_counts_words_not_latin_characters(self):
+        self.assertEqual(SUITE["mixed_error"]("检查 pull request", "检查 poor request"), (1, 4))
+        self.assertEqual(SUITE["mixed_error"]("你好，GitHub Actions", "你好 github actions。"), (0, 4))
+        self.assertEqual(SUITE["mixed_tokens"]("foo,bar"), ["foo", "bar"])
+        self.assertGreater(SUITE["mixed_error"]("user_id 1.5", "userid 15")[0], 0)
+
     def test_benchmark_uses_production_duration_gate_and_postprocessing(self):
         class Streaming:
             def create_stream(self): return object()
@@ -29,14 +35,17 @@ class BenchmarkMetricTests(unittest.TestCase):
             def correct(self, text): return text + "。"
 
         state = SUITE["ENGINE"]["_best_final_text"].__globals__
+        diagnostics = {}
         with patch.dict(state, FINAL_MAX_AUDIO_SEC=0.5, final_inflight=None):
             with ThreadPoolExecutor(max_workers=1) as executor:
                 raw, final = SUITE["recognize_current"](
                     Streaming(), Final(), bytes(32000), glossary=Glossary(),
                     punctuation=Punctuation(), executor=executor,
+                    diagnostics=diagnostics,
                 )
         self.assertEqual(raw, "poll request")
         self.assertEqual(final, "pull request。")
+        self.assertEqual(diagnostics["final_reason"], "duration-limit")
 
     def test_reordered_sentence_is_not_100_percent(self):
         distance, rate = SUITE["cer"]("我喜欢你", "你喜欢我")

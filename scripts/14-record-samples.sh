@@ -58,6 +58,48 @@ replace_manifest_row() {
     mv "$tmp" "$MANIFEST"
 }
 
+# Reject takes that carry no usable speech: too short, or too quiet to be a
+# voice. Thresholds are overridable so a quiet room or a short reply is not
+# rejected by accident.
+MIN_SECONDS="${MIN_SECONDS:-1.2}"
+MIN_RMS="${MIN_RMS:-300}"
+
+check_audio() {
+    local wav="$1"
+    local stats
+    stats="$(python3 - "$wav" <<'PY' 2>/dev/null || true
+import math
+import struct
+import sys
+import wave
+
+path = sys.argv[1]
+with wave.open(path, "rb") as handle:
+    frames = handle.readframes(handle.getnframes())
+samples = struct.unpack("<%dh" % (len(frames) // 2), frames)
+if not samples:
+    print("0.00 0.0")
+else:
+    rms = math.sqrt(sum(s * s for s in samples) / len(samples))
+    print(f"{len(samples) / 16000:.2f} {rms:.1f}")
+PY
+)"
+    if [ -z "$stats" ]; then
+        return 0
+    fi
+    local seconds="${stats%% *}"
+    local rms="${stats##* }"
+    if awk -v s="$seconds" -v m="$MIN_SECONDS" 'BEGIN { exit !(s + 0 < m + 0) }'; then
+        echo "[warn] only ${seconds}s of audio was captured (minimum ${MIN_SECONDS}s)."
+        return 1
+    fi
+    if awk -v r="$rms" -v m="$MIN_RMS" 'BEGIN { exit !(r + 0 < m + 0) }'; then
+        echo "[warn] the take is very quiet (rms ${rms}, minimum ${MIN_RMS})."
+        return 1
+    fi
+    return 0
+}
+
 record_one() {
     local id="$1"
     local text="$2"
@@ -90,6 +132,18 @@ record_one() {
 
         if [ ! -s "$wav" ]; then
             echo "[warn] no audio was written. Retrying this sample."
+            continue
+        fi
+
+        # A take that is too short or too quiet is almost always a stopped
+        # recording rather than a short utterance. Reject it here instead of
+        # silently accepting an empty sample.
+        if ! check_audio "$wav"; then
+            echo "[warn] take rejected above; recording this sample again."
+            local rejected="$SESSION_DIR/.rejected"
+            mkdir -p "$rejected"
+            mv "$wav" "$rejected/$id-$(date +%H%M%S).wav" 2>/dev/null || true
+            mv "$log" "$rejected/$id-$(date +%H%M%S).ffmpeg.log" 2>/dev/null || true
             continue
         fi
 

@@ -21,6 +21,7 @@ import runpy
 import sys
 import time
 import wave
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -94,6 +95,22 @@ def token_distance(pattern: str, reference: str, hypothesis: str) -> tuple[int, 
     return edit_distance(ref, hyp), len(ref)
 
 
+def mixed_tokens(text: str) -> list[str]:
+    """Chinese characters + Latin words + number strings for mixed error rate.
+
+    Keep identifier symbols and numeric spelling significant, as in content CER.
+    This weights an English word once instead of once per Latin character.
+    """
+    return [token for token in re.findall(
+        r"[a-z]+(?:[_-][a-z0-9]+)*|\d+(?:\.\d+)*|[^a-z0-9]", text.lower()
+    ) if normalize(token)]
+
+
+def mixed_error(reference: str, hypothesis: str) -> tuple[int, int]:
+    ref, hyp = mixed_tokens(reference), mixed_tokens(hypothesis)
+    return edit_distance(ref, hyp), len(ref)
+
+
 def load_cases(args) -> list[tuple[str, str, Path]]:
     if args.manifest:
         cases = []
@@ -120,7 +137,7 @@ def read_pcm16_mono_16k(path: Path) -> bytes:
 
 
 def recognize_current(asr, final_asr, pcm: bytes, *, glossary=None,
-                      punctuation=None, executor=None) -> tuple[str, str]:
+                      punctuation=None, executor=None, diagnostics=None) -> tuple[str, str]:
     stream = asr.create_stream()
     chunk_bytes = 1600 * 2  # 100 ms @ 16kHz, int16 mono
     for start in range(0, len(pcm), chunk_bytes):
@@ -140,7 +157,7 @@ def recognize_current(asr, final_asr, pcm: bytes, *, glossary=None,
     executor = executor if executor is not None else ThreadPoolExecutor(max_workers=1)
     try:
         final = finish("benchmark", 1, glossary.correct(streaming), pcm,
-                       final_asr, glossary, punctuation, executor)
+                       final_asr, glossary, punctuation, executor, diagnostics=diagnostics)
     finally:
         state.update(saved)
         if owned_executor:
@@ -152,6 +169,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--require-final", action="store_true",
                         help="fail if the requested final model cannot load")
+    parser.add_argument("--mode", choices=("production", "raw-final"), default="production",
+                        help="production selection policy or acoustic final only (no deadline/glossary/punctuation)")
     parser.add_argument(
         "--manifest",
         type=Path,
@@ -174,12 +193,12 @@ def main() -> int:
         args.output = args.manifest.parent / "asr-evaluation.tsv"
 
     print("Loading current Baogu IME recognizers...")
-    asr = SherpaRecognizer()
+    asr = SherpaRecognizer() if args.mode == "production" else None
     final_asr = FinalRecognizer()
-    if args.require_final and final_asr.recognizer is None:
+    if (args.require_final or args.mode == "raw-final") and final_asr.recognizer is None:
         parser.error("requested final recognizer is unavailable")
-    glossary = ENGINE["GlossaryCorrector"]()
-    punctuation = ENGINE["PunctuationRestorer"]()
+    glossary = ENGINE["GlossaryCorrector"]() if asr else None
+    punctuation = ENGINE["PunctuationRestorer"]() if asr else None
     executor = ThreadPoolExecutor(max_workers=1)
 
     rows = []
@@ -188,6 +207,8 @@ def main() -> int:
     exact_count = 0
     raw_edits = 0
     raw_chars = 0
+    mixed_edits = mixed_refs = 0
+    final_reasons = Counter()
     category_totals = {
         "english": [0, 0],
         "number": [0, 0],
@@ -197,18 +218,27 @@ def main() -> int:
 
     for cid, expected, wav in load_cases(args):
         if not wav.exists():
-            print(f"{cid}: SKIP missing {wav}")
-            continue
+            raise FileNotFoundError(f"{cid}: missing evaluation audio {wav}")
 
         pcm = read_pcm16_mono_16k(wav)
         started = time.monotonic()
-        streaming, final = recognize_current(
-            asr, final_asr, pcm, glossary=glossary,
-            punctuation=punctuation, executor=executor,
-        )
+        diagnostics = {}
+        if args.mode == "raw-final":
+            streaming, final = "", final_asr.transcribe(pcm)
+            diagnostics.update(final_reason="raw-final", final_backend=final_asr.backend,
+                               final_wait_sec=time.monotonic() - started)
+        else:
+            streaming, final = recognize_current(
+                asr, final_asr, pcm, glossary=glossary,
+                punctuation=punctuation, executor=executor, diagnostics=diagnostics,
+            )
         elapsed = time.monotonic() - started
         distance, rate = cer(expected, final)
         raw_distance, raw_rate = raw_cer(expected, final)
+        mixed_dist, mixed_len = mixed_error(expected, final)
+        mixed_edits += mixed_dist
+        mixed_refs += mixed_len
+        final_reasons[diagnostics["final_reason"]] += 1
         ref_len = len(normalize(expected))
         exact = normalize(expected) == normalize(final)
 
@@ -241,6 +271,14 @@ def main() -> int:
             "cer": f"{rate:.6f}",
             "raw_cer": f"{raw_rate:.6f}",
             "exact": "1" if exact else "0",
+            "mode": args.mode,
+            "final_backend": diagnostics["final_backend"],
+            "final_reason": diagnostics["final_reason"],
+            "final_wait_sec": f'{diagnostics["final_wait_sec"]:.3f}',
+            "raw_final": diagnostics.get("final_raw", ""),
+            "after_glossary": diagnostics.get("final_glossary", ""),
+            "mixed_errors": mixed_dist,
+            "mixed_reference": mixed_len,
             **category_values,
         })
 
@@ -266,6 +304,9 @@ def main() -> int:
                 "number_errors", "number_reference",
                 "punctuation_errors", "punctuation_reference",
                 "code_errors", "code_reference",
+                "mode", "final_backend", "final_reason", "final_wait_sec",
+                "raw_final", "after_glossary",
+                "mixed_errors", "mixed_reference",
             ],
             delimiter="\t",
         )
@@ -273,6 +314,9 @@ def main() -> int:
         writer.writerows(rows)
 
     micro_cer = total_edits / max(total_ref_chars, 1)
+    print(f"mixed_error_rate={mixed_edits / max(mixed_refs, 1):.2%} "
+          f"(errors={mixed_edits}, reference={mixed_refs})")
+    print(f"final_selection={dict(final_reasons)}")
     print()
     print(
         f"SUMMARY cases={len(rows)} exact={exact_count}/{len(rows)} "
