@@ -1,5 +1,6 @@
 # Regenerable / large artifacts (re-downloaded or rebuilt by scripts)
 models/
+.venv-asr*/
 build/
 .omo/
 
