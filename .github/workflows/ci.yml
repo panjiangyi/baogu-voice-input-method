@@ -18,7 +18,7 @@ jobs:
             dbus-x11
       - name: Python syntax
         run: |
-          python3 -m py_compile             baogu-engine baogu-ptt baogu-ask baogu-overlay             baogu_glossary.py baogu_selection.py baogu_settings.py             scripts/08-offline-suite.py scripts/20-build-glossary.py             tests/test_baogu.py tests/test_engine_logic.py             tests/test_llm_corrector.py tests/test_benchmark.py             tests/test_glossary.py tests/test_glossary_corrector.py tests/test_selection.py     tests/test_ask.py             tests/native_bridge.py
+          python3 -m py_compile             baogu-engine baogu-ptt baogu-ask baogu-overlay             baogu_glossary.py baogu_learned.py baogu_selection.py baogu_settings.py             scripts/08-offline-suite.py scripts/20-build-glossary.py             tests/test_baogu.py tests/test_engine_logic.py             tests/test_llm_corrector.py tests/test_benchmark.py             tests/test_glossary.py tests/test_glossary_corrector.py tests/test_learned.py tests/test_selection.py     tests/test_ask.py             tests/native_bridge.py
       - name: Shell syntax
         run: |
           bash -n baogu-lib.sh baogu-begin baogu-end baogu-mic baogu-reset baogu-status baogu-hotwords

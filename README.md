@@ -317,6 +317,24 @@ Unicode characters before and after the input position**:
 - **When cloud correction is enabled**, this surrounding text is sent together with the
   current dictation to the configured DeepSeek endpoint; it is not sent when disabled.
 
+### Hotwords and learned misrecognitions
+
+In `dictation`, `aggressive`, and `rewrite` modes the system prompt carries **every hotword**
+(personal terms first, then the built-in glossary) and tells the model that speech
+recognition often turns English letters or words into similar-sounding Chinese characters or
+digits, for example `PR` → `p二` / `批二`. The model maps such spans back to the hotword
+spelling when the context fits; the polish judge sees the same list, so that repair is not
+rejected as a change of meaning. The vocabulary is re-read on every request, so a term added
+with Alt + W helps the very next sentence.
+
+After every accepted correction the engine diffs the ASR text against the corrected text.
+Each span that was replaced by a hotword (`p二` → `PR`, `get help actions` →
+`GitHub Actions`) is counted in `~/.config/baogu/learned-mistakes.tsv`. Punctuation, spacing,
+case, filler removal, and rewording into non-hotwords are not learned, nor is anything the
+judge rejected. The 200 most frequent pairs go back into the next prompt as known
+misrecognitions. List them with `./baogu-hotwords learned`; if the model ever learns a wrong
+pair, delete that line from the TSV.
+
 ### Timeout and concurrency
 
 `BAOGU_LLM_MAX_WAIT` sets the total time the final commit waits for cloud correction
@@ -403,7 +421,8 @@ again.
 - To switch back to DeepSeek's default endpoint, delete the `BAOGU_LLM_API` line (or set
   it to `anthropic`) and restore
   `DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic`, then run `./deploy.sh` again.
-- Privacy: when correction is on, the dictated sentence, your personal hotwords, and (unless
+- Privacy: when correction is on, the dictated sentence, your personal hotwords, learned
+  misrecognitions, and (unless
   `BAOGU_CONTEXT_ENABLED=0`) up to 500 characters of surrounding text are sent to the
   provider you configure.
 
@@ -466,6 +485,7 @@ anything.
 ./baogu-hotwords list
 ./baogu-hotwords remove "MyProject"
 ./baogu-hotwords path      # print the file location
+./baogu-hotwords learned   # misrecognitions the AI corrector learned (count, misheard -> correct)
 ```
 
 Or do it from the keyboard: select the term you keep having to spell, press **Alt + W**
@@ -477,9 +497,9 @@ and `#` comments are ignored). You can also edit the file directly. Your persona
 
 - are used **locally** to repair the spelling, case, and spacing of English / ASCII terms
   (for example `get hub` → `GitHub`);
-- are sent to the AI corrector, when it is enabled, as a vocabulary hint (the first 128
-  terms). This is the only way Chinese terms help, because the local glossary never rewrites
-  Chinese characters.
+- are sent to the AI corrector, when it is enabled, together with the whole built-in
+  glossary. This is the only way Chinese terms help, because the local glossary never
+  rewrites Chinese characters.
 
 Add proper nouns, product names, and identifiers. Don't add ordinary English words; they
 bias the corrector toward false matches.
@@ -1058,6 +1078,20 @@ Anthropic 兼容接口（thinking 已关闭）。
 - `BAOGU_CONTEXT_ENABLED=0` 关闭；
 - **启用云端纠错时**，这部分文字会随当前口述文本发送到已配置的 DeepSeek 接口；关闭时不会发送。
 
+### 热词与自动学习易错词
+
+`dictation`、`aggressive`、`rewrite` 模式下，系统提示词会带上**全部热词**（个人热词在前，
+其后是内置词库），并告诉模型：语音识别常把英文字母或单词听成读音相近的汉字或数字，例如
+`PR` → `p二` / `批二`。上下文说得通时，模型会把这些片段改回热词表里的写法；润色评审也拿到
+同一张词表，不会把这种修正当成改变原意而判回原文。词表每次请求都重新读取，用 Alt + W
+新加的词下一句话就生效。
+
+每次纠错被采纳后，引擎会对比识别原文和纠错结果：凡是某个片段被改成了热词（`p二` → `PR`、
+`get help actions` → `GitHub Actions`），就累计到 `~/.config/baogu/learned-mistakes.tsv`。
+只改标点、空格、大小写、删口头语，或改成非热词的普通改写都不会学；被评审判回原文的也不学。
+出现次数最多的 200 条会作为「以前确认过的误识别」放进下一次的提示词。用
+`./baogu-hotwords learned` 查看；如果模型学错了某一条，直接从这个 TSV 里删掉那一行。
+
 ### 超时与并发
 
 `BAOGU_LLM_MAX_WAIT` 设置最终提交等待云端纠错的总时间（秒，默认沿用 `BAOGU_LLM_TIMEOUT`）。
@@ -1136,7 +1170,7 @@ BAOGU_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
   开关在任何服务商下表现一致。
 - 想换回 DeepSeek 默认接口：删除 `BAOGU_LLM_API` 这一行（或设为 `anthropic`），把
   `DEEPSEEK_BASE_URL` 改回 `https://api.deepseek.com/anthropic`，再运行 `./deploy.sh`。
-- 隐私：开启纠错后，当前这句话、你的个人热词，以及（除非设置 `BAOGU_CONTEXT_ENABLED=0`）
+- 隐私：开启纠错后，当前这句话、你的个人热词、学到的易错词，以及（除非设置 `BAOGU_CONTEXT_ENABLED=0`）
   光标前后最多 500 个字符会发送给你配置的服务商。
 
 ---
@@ -1261,6 +1295,7 @@ BAOGU_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 ./baogu-hotwords list
 ./baogu-hotwords remove "MyProject"
 ./baogu-hotwords path      # 打印文件位置
+./baogu-hotwords learned   # AI 纠错学到的易错词（次数、识别结果 -> 正确写法）
 ```
 
 也可以直接用键盘：选中那个老是要拼错的词，按 **Alt + W**（左 Alt），弹通知即已加入。
@@ -1270,7 +1305,7 @@ BAOGU_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 也可以直接编辑这个文件。个人热词：
 
 - 在**本地**用来修正英文 / ASCII 词的拼写、大小写和空格（例如 `get hub` → `GitHub`）；
-- 开启 AI 纠错时，前 128 个词会作为词汇提示发给纠错模型。中文词只能通过这条路起作用，
+- 开启 AI 纠错时，会连同整个内置词库一起发给纠错模型。中文词只能通过这条路起作用，
   因为本地词库从不改写中文字符。
 
 适合加专有名词、产品名和标识符。不要加普通英文单词，会让纠错误匹配。

@@ -235,6 +235,23 @@ class LLMCorrectorTests(unittest.TestCase):
             self.assertEqual(judged["B"], "明天下午四点开会。")
             self.assertEqual(srv.requests[1]["max_tokens"], 8)
 
+    def test_dictation_sends_every_hotword_to_correction_and_judge(self):
+        with StubServer([
+            {"content": [{"type": "text", "text": "我刚提了一个 PR。"}]},
+            {"content": [{"type": "text", "text": "B"}]},
+        ]) as srv:
+            with _with_env({"BAOGU_LLM_ENABLED": "1", "BAOGU_LLM_MODE": "dictation",
+                            "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
+                c = Corrector()
+                with patch.dict(ENGINE["LLMCorrector"]._vocabulary.__globals__,
+                                {"load_exact_terms": lambda: ["PR", "GitHub Actions"]}):
+                    result = c.correct("我刚提了一个p二")
+            self.assertEqual(result, "我刚提了一个 PR。")
+            for request in srv.requests:
+                self.assertIn("热词表：PR、GitHub Actions", request["system"])
+            data = json.loads(srv.requests[0]["messages"][0]["content"])
+            self.assertNotIn("terms", data)
+
     def test_dictation_keeps_original_when_polish_is_worse(self):
         with StubServer([
             {"content": [{"type": "text", "text": "这个方案很优雅地解决了问题。"}]},
