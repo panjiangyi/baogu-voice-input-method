@@ -1303,6 +1303,13 @@ def _best_final_text(
         and not terminate
         and audio_sec <= max(0.0, FINAL_MAX_AUDIO_SEC)
     )
+    # Cloud correction already refines the streaming transcript. Running a
+    # second local recognizer first adds seconds to every cloud request.
+    # Keep the two-pass pipeline available as an explicit accuracy preference.
+    if (llm is not None and llm_enabled(llm.enabled)
+            and os.environ.get("BAOGU_FINAL_BEFORE_LLM", "0") != "1"):
+        can_run_final = False
+        reason = "cloud-correction"
 
     if final_inflight is not None and final_inflight.done():
         try:

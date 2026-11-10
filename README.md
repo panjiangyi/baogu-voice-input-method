@@ -127,6 +127,7 @@ journalctl --user -u baogu-corrector  -f   # Legacy FireRed + local corrector on
 | `BAOGU_LLM_MODE` | `aggressive` (default) / `punctuation` / `dictation` |
 | `BAOGU_LLM_TIMEOUT` | Cloud-correction request timeout (seconds) |
 | `BAOGU_LLM_MAX_WAIT` | Total time final commit waits for cloud correction (seconds) |
+| `BAOGU_FINAL_BEFORE_LLM` | Set to `1` to run offline recognition before cloud correction; default `0` sends the streaming transcript directly to cloud correction to reduce latency |
 | `DEEPSEEK_MODEL` | Model ID; default `deepseek-v4-flash` (set at deploy time) |
 | `DEEPSEEK_BASE_URL` / `DEEPSEEK_API_KEY` | AI correction endpoint and key, in `.env` (any provider, despite the name) |
 | `BAOGU_LLM_API` | `anthropic` (default, `/v1/messages`) or `openai` (`/chat/completions`) |
@@ -894,6 +895,7 @@ journalctl --user -u baogu-corrector  -f   # 仅 legacy FireRed + 本地纠错�
 | `BAOGU_LLM_MODE` | `aggressive`（默认）/ `punctuation` / `dictation` |
 | `BAOGU_LLM_TIMEOUT` | 等待云端纠错的超时（秒） |
 | `BAOGU_LLM_MAX_WAIT` | 最终提交等待云端纠错的总时间（秒） |
+| `BAOGU_FINAL_BEFORE_LLM` | 默认 `0`，启用云端纠错时直接处理实时识别结果以减少等待；设为 `1` 可恢复先离线二次识别再云端纠错 |
 | `DEEPSEEK_MODEL` | 模型 ID，默认 `deepseek-v4-flash`（部署时设置） |
 | `DEEPSEEK_BASE_URL` / `DEEPSEEK_API_KEY` | AI 纠错的地址和密钥，写在 `.env`（名字带 DeepSeek，但适用于任何服务商） |
 | `BAOGU_LLM_API` | `anthropic`（默认，`/v1/messages`）或 `openai`（`/chat/completions`） |

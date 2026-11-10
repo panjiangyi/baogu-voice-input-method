@@ -294,8 +294,9 @@ private:
         // discarding it. The old session will be rejected when it eventually
         // finishes.
         if (active_ && preeditMode_ && ic && ic->hasFocus() &&
-            ic->uuid() == target_ && !committed_.empty()) {
-            std::string fallback = committed_;
+            ic->uuid() == target_ &&
+            (!preview_.empty() || !committed_.empty())) {
+            std::string fallback = preview_.empty() ? committed_ : preview_;
             if (!hasTerminalPunctuation(fallback)) {
                 fallback += "。";
             }

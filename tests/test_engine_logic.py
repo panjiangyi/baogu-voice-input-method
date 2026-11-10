@@ -53,6 +53,25 @@ class ReconcilerTests(unittest.TestCase):
 
 
 class FinalPaddingTests(unittest.TestCase):
+    def test_cloud_correction_skips_local_second_pass(self):
+        from types import SimpleNamespace
+        fn = ENGINE["_best_final_text"]
+        final = SimpleNamespace(recognizer=object(), transcribe=Mock())
+        identity = SimpleNamespace(correct=lambda text: text)
+        diagnostics = {}
+        with patch.dict("os.environ", BAOGU_FINAL_BEFORE_LLM="0"), patch.dict(
+            fn.__globals__, current_session="s1", start_request=1,
+            terminate=False, final_inflight=None, llm_enabled=lambda _: True,
+            _bounded_llm_text=lambda *args: ("纠错结果。", "success"),
+            set_correction_state=lambda *args: None,
+        ), ThreadPoolExecutor(max_workers=1) as executor:
+            result = fn("s1", 1, "实时结果", b"x" * 32000,
+                        final, identity, identity, executor,
+                        llm=SimpleNamespace(enabled=True), diagnostics=diagnostics)
+        self.assertEqual(result, "纠错结果。")
+        self.assertEqual(diagnostics["final_reason"], "cloud-correction")
+        final.transcribe.assert_not_called()
+
     def test_finalize_supplies_configured_trailing_silence(self):
         class Stream:
             def __init__(self):

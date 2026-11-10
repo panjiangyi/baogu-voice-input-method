@@ -156,6 +156,19 @@ assert final_commits == ["帮我看 GitHub Actions"], final_events
 assert not [args for member, args in final_events if member == "ForwardKey"], final_events
 assert not [args for member, args in final_events if member == "DeleteSurroundingText"], final_events
 
+# Starting another utterance while cloud correction is pending must preserve
+# the visible PreviewSession text, which is stored separately from committed_.
+assert bridge("BeginSession", GLib.Variant("(s)", ("pending",))) == (True,)
+assert bridge("PreviewSession", GLib.Variant("(ss)", ("pending", "上一句"))) == (True,)
+assert bridge("BeginSession", GLib.Variant("(s)", ("next",))) == (True,)
+deadline = time.monotonic() + .05
+while time.monotonic() < deadline:
+    GLib.MainContext.default().iteration(False)
+    time.sleep(.001)
+assert [args[0] for member, args in events if member == "CommitString"][-1] == "上一句。"
+assert bridge("CommitSession", GLib.Variant("(ss)", ("pending", "迟到纠错"))) == (False,)
+assert bridge("CancelSession", GLib.Variant("(s)", ("next",))) == (True,)
+
 # Session closes after the atomic commit; late final results fail closed.
 assert bridge(
     "CommitSession",
