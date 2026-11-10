@@ -21,6 +21,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -31,6 +32,7 @@ from pathlib import Path
 import numpy as np
 
 from baogu_glossary import GlossaryCorrector, load_exact_terms
+from baogu_media import pause_playing
 from baogu_learned import find_mistakes, load_learned_mistakes, record_mistakes
 from baogu_settings import llm_enabled
 
@@ -113,6 +115,23 @@ def set_state(state: str) -> None:
         STATE_FILE.write_text(state + "\n", encoding="utf-8")
     except OSError:
         pass
+
+
+def pause_other_media() -> None:
+    """Pause other playing audio in the background; never delays recording."""
+    if os.environ.get("BAOGU_PAUSE_MEDIA", "1") != "1":
+        return
+
+    def run() -> None:
+        try:
+            paused = pause_playing()
+        except Exception as ex:
+            log(f"pause media failed: {ex!r}")
+            return
+        if paused:
+            log(f"paused media: {', '.join(paused)}")
+
+    threading.Thread(target=run, name="pause-media", daemon=True).start()
 
 
 def set_correction_state(session: str, status: str) -> None:
@@ -1547,6 +1566,7 @@ def run_utterance(
     started = time.monotonic()
     all_audio = bytearray()
     set_state("recording")
+    pause_other_media()
     log(f"recording session={session[:8]} output={OUTPUT_MODE}")
     # Open the microphone first so even a slow context lookup cannot swallow
     # the first spoken word. Capture before emitting this utterance's preedit.
@@ -1707,6 +1727,7 @@ def run_ask_utterance(
     started = time.monotonic()
     all_audio = bytearray()
     set_state("recording")
+    pause_other_media()
     log(f"ask recording session={session[:8]} selection_chars={len(selection)}")
     release_tail = ReleaseTailDetector()
     last_text = ""

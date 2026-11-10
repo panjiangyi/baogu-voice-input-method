@@ -134,6 +134,7 @@ journalctl --user -u baogu-corrector  -f   # Legacy FireRed + local corrector on
 | `BAOGU_CORRECTOR_ZEN_MODEL` / `_REASONING` | Switch model / reasoning tier (low/medium/high/xhigh) |
 | `BAOGU_RELEASE_GRACE_SEC` | Trailing-sound wait after key release (default 0.25, capped at 3s, 0 = stop immediately) |
 | `BAOGU_CONTEXT_ENABLED` | 0 = disable app name / surrounding-text context |
+| `BAOGU_PAUSE_MEDIA` | 0 = don't pause playing media (MPRIS players: browsers, Spotify, VLC…) when recording starts |
 | `BAOGU_PTT_KEYCODE` | Override PTT physical keycode (default right Alt = 108) |
 | `BAOGU_ASK_ENABLED` | 1 (default) = enable selection question with Alt + A |
 | `BAOGU_ASK_KEYCODE` / `BAOGU_ASK_MODIFIER_KEYCODE` | Ask hotkey keycodes (default 38 = `a`, 64 = left Alt) |
@@ -922,6 +923,7 @@ journalctl --user -u baogu-corrector  -f   # 仅 legacy FireRed + 本地纠错�
 | `BAOGU_CORRECTOR_ZEN_MODEL` / `_REASONING` | 换模型 / 推理档（low/medium/high/xhigh） |
 | `BAOGU_RELEASE_GRACE_SEC` | 松键后尾音等待秒数（默认 0.25，封顶 3s，0 立即停） |
 | `BAOGU_CONTEXT_ENABLED` | 0 = 关闭应用名 / surrounding-text 上下文 |
+| `BAOGU_PAUSE_MEDIA` | 0 = 开始录音时不暂停正在播放的媒体（MPRIS 播放器：浏览器、Spotify、VLC 等） |
 | `BAOGU_PTT_KEYCODE` | 覆盖 PTT 物理 keycode（默认右 Alt = 108） |
 | `BAOGU_HOTWORD_ENABLED` | 1（默认）= 启用 Alt + W 一键加常用词 |
 | `BAOGU_HOTWORD_KEYCODE` / `BAOGU_HOTWORD_MODIFIER_KEYCODE` | 常用词快捷键 keycode（默认 25 = `w`，64 = 左 Alt；keycode 取自 X keymap，未必等同 PC105 标准表，用 `xmodmap -pke` 查） |

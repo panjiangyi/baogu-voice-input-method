@@ -1,5 +1,6 @@
 """Ask-mode helpers: request intake, atomic state, and error text."""
 import json
+import os
 import runpy
 import tempfile
 import types
@@ -8,6 +9,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+# Recording tests must not touch the running engine's state files or pause
+# the developer's real media players.
+os.environ["XDG_RUNTIME_DIR"] = tempfile.mkdtemp(prefix="baogu-test-")
+os.environ["BAOGU_PAUSE_MEDIA"] = "0"
 ENGINE = runpy.run_path(str(ROOT / "baogu-engine"))
 # runpy returns a copy, so patch the shared function globals, not ENGINE itself.
 GLOBALS = ENGINE["take_ask_request"].__globals__

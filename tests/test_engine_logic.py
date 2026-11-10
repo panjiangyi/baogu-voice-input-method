@@ -1,5 +1,7 @@
 """Unit tests for the event-driven Baogu IME engine."""
+import os
 import runpy
+import tempfile
 from pathlib import Path
 import time
 import unittest
@@ -8,6 +10,10 @@ from concurrent.futures import Future, ThreadPoolExecutor
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+# Recording tests must not touch the running engine's state files or pause
+# the developer's real media players.
+os.environ["XDG_RUNTIME_DIR"] = tempfile.mkdtemp(prefix="baogu-test-")
+os.environ["BAOGU_PAUSE_MEDIA"] = "0"
 ENGINE = runpy.run_path(str(ROOT / "baogu-engine"))
 
 
