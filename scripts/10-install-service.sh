@@ -24,7 +24,7 @@ DEEPSEEK_MODEL="${DEEPSEEK_MODEL:-deepseek-v4-flash}"
 # stays in Fcitx preedit and FinishSession commits the corrected sentence once.
 LLM_DISABLED="${BAOGU_LLM_DISABLED:-0}"
 OUTPUT_MODE="${BAOGU_OUTPUT_MODE:-preedit}"
-FINAL_ENABLED="${BAOGU_FINAL_ENABLED:-1}"
+FINAL_ENABLED="${BAOGU_FINAL_ENABLED:-0}"
 FINAL_BACKEND="${BAOGU_FINAL_BACKEND:-funasr-nano}"
 case "$FINAL_BACKEND" in
   qwen3|firered2-aed|firered2-ctc|funasr-nano) DEFAULT_FINAL_WAIT=3.0 ;;
