@@ -324,15 +324,14 @@ In `dictation`, `aggressive`, and `rewrite` modes the system prompt carries **ev
 (personal terms first, then the built-in glossary) and tells the model that speech
 recognition often turns English letters or words into similar-sounding Chinese characters or
 digits, for example `PR` → `p二` / `批二`. The model maps such spans back to the hotword
-spelling when the context fits; the polish judge sees the same list, so that repair is not
-rejected as a change of meaning. The vocabulary is re-read on every request, so a term added
+spelling when the context fits; the self-check counts that repair as an improvement, not
+a change of meaning. The vocabulary is re-read on every request, so a term added
 with Alt + W helps the very next sentence.
 
 After every accepted correction the engine diffs the ASR text against the corrected text.
 Each span that was replaced by a hotword (`p二` → `PR`, `get help actions` →
 `GitHub Actions`) is counted in `~/.config/baogu/learned-mistakes.tsv`. Punctuation, spacing,
-case, filler removal, and rewording into non-hotwords are not learned, nor is anything the
-judge rejected. The 200 most frequent pairs go back into the next prompt as known
+case, filler removal, and rewording into non-hotwords are not learned. The 200 most frequent pairs go back into the next prompt as known
 misrecognitions. List them with `./baogu-hotwords learned`; if the model ever learns a wrong
 pair, delete that line from the TSV.
 
@@ -442,10 +441,10 @@ Two safeguards come with it:
 - **Profanity is never cleaned up.** The `dictation` and `rewrite` prompts require the
   speaker's profanity and crude wording to be preserved verbatim, never replaced with
   a softened phrase.
-- **Every polish is compared with the original.** When the polished text differs from the
-  raw ASR text, one short reviewer call picks between them. If the reviewer chooses the
-  original — or that call fails, times out, or answers ambiguously — the raw transcription
-  is kept and the status becomes `kept-original`.
+- **The polish checks itself against the original.** In the same single request, the model
+  compares its polished text with the raw ASR text and outputs whichever is more faithful;
+  when the polish is not clearly better it returns the original with punctuation only.
+  There is no second reviewer call.
 
 ---
 
@@ -1084,13 +1083,13 @@ Anthropic 兼容接口（thinking 已关闭）。
 
 `dictation`、`aggressive`、`rewrite` 模式下，系统提示词会带上**全部热词**（个人热词在前，
 其后是内置词库），并告诉模型：语音识别常把英文字母或单词听成读音相近的汉字或数字，例如
-`PR` → `p二` / `批二`。上下文说得通时，模型会把这些片段改回热词表里的写法；润色评审也拿到
-同一张词表，不会把这种修正当成改变原意而判回原文。词表每次请求都重新读取，用 Alt + W
+`PR` → `p二` / `批二`。上下文说得通时，模型会把这些片段改回热词表里的写法；自查时这种修正
+算作改进，不会被当成改变原意退回原文。词表每次请求都重新读取，用 Alt + W
 新加的词下一句话就生效。
 
 每次纠错被采纳后，引擎会对比识别原文和纠错结果：凡是某个片段被改成了热词（`p二` → `PR`、
 `get help actions` → `GitHub Actions`），就累计到 `~/.config/baogu/learned-mistakes.tsv`。
-只改标点、空格、大小写、删口头语，或改成非热词的普通改写都不会学；被评审判回原文的也不学。
+只改标点、空格、大小写、删口头语，或改成非热词的普通改写都不会学。
 出现次数最多的 200 条会作为「以前确认过的误识别」放进下一次的提示词。用
 `./baogu-hotwords learned` 查看；如果模型学错了某一条，直接从这个 TSV 里删掉那一行。
 
@@ -1258,9 +1257,8 @@ BAOGU_LLM_ENABLED=1 DEEPSEEK_MODEL=<你的模型ID> ./deploy.sh
 
 - **不净化脏话**：`dictation` 和 `rewrite` 提示词都明确要求逐字保留说话者的脏话和粗口，
   禁止用委婉说法替换。
-- **润色后与原文对比**：只要润色结果和识别原文不同，就会再跑一次很短的评审调用，让模型
-  在「原文 / 润色版」之间二选一。判给原文、或评审调用失败/超时/答非所问时，一律保留原始
-  转写，状态记为 `kept-original`。也就是说多花一次小请求，换「润色后还不如原来」时能退回。
+- **润色时自查**：同一次请求里，模型把整理稿和识别原文对照，直接输出它判断更忠实的一版；
+  整理稿不是明显更好时，只给原文加标点后输出。不再有第二次评审调用。
 
 ---
 

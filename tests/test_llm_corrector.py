@@ -211,11 +211,8 @@ class LLMCorrectorTests(unittest.TestCase):
             self.assertEqual(c.last_status, "rejected")
 
     def test_dictation_separates_instructions_and_bounded_context(self):
-        # Dictation polish is judged against the raw ASR text, so the stub has
-        # to answer both the polish call and the comparison call.
         with StubServer([
             {"content": [{"type": "text", "text": "明天下午四点开会。"}]},
-            {"content": [{"type": "text", "text": "B"}]},
         ]) as srv:
             with _with_env({"BAOGU_LLM_ENABLED": "1", "BAOGU_LLM_MODE": "dictation",
                             "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
@@ -230,15 +227,13 @@ class LLMCorrectorTests(unittest.TestCase):
             self.assertEqual(data["text"], "嗯明天下午三点不四点开会")
             self.assertEqual(data["context"], {"app": "chat", "before": "前" * 500,
                                                "after": "后" * 500})
-            judged = json.loads(srv.requests[1]["messages"][0]["content"])
-            self.assertEqual(judged["A"], "嗯明天下午三点不四点开会")
-            self.assertEqual(judged["B"], "明天下午四点开会。")
-            self.assertEqual(srv.requests[1]["max_tokens"], 8)
+            # The self-check against the original happens inside this one call.
+            self.assertEqual(len(srv.requests), 1)
+            self.assertIn("只输出你判断最好的那一版", request["system"])
 
-    def test_dictation_sends_every_hotword_to_correction_and_judge(self):
+    def test_dictation_sends_every_hotword_to_correction(self):
         with StubServer([
             {"content": [{"type": "text", "text": "我刚提了一个 PR。"}]},
-            {"content": [{"type": "text", "text": "B"}]},
         ]) as srv:
             with _with_env({"BAOGU_LLM_ENABLED": "1", "BAOGU_LLM_MODE": "dictation",
                             "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
@@ -247,63 +242,24 @@ class LLMCorrectorTests(unittest.TestCase):
                                 {"load_exact_terms": lambda: ["PR", "GitHub Actions"]}):
                     result = c.correct("我刚提了一个p二")
             self.assertEqual(result, "我刚提了一个 PR。")
-            for request in srv.requests:
-                self.assertIn("热词表：PR、GitHub Actions", request["system"])
+            self.assertEqual(len(srv.requests), 1)
+            self.assertIn("热词表：PR、GitHub Actions", srv.requests[0]["system"])
             data = json.loads(srv.requests[0]["messages"][0]["content"])
             self.assertNotIn("terms", data)
 
-    def test_dictation_keeps_original_when_polish_is_worse(self):
+    def test_dictation_commits_the_version_the_model_chose(self):
+        # When the model judges its polish worse, it returns the original
+        # (punctuated) itself; no second request is made.
         with StubServer([
-            {"content": [{"type": "text", "text": "这个方案很优雅地解决了问题。"}]},
-            {"content": [{"type": "text", "text": "A"}]},
+            {"content": [{"type": "text", "text": "这个方案他妈的解决了问题。"}]},
         ]) as srv:
             with _with_env({"BAOGU_LLM_ENABLED": "1", "BAOGU_LLM_MODE": "dictation",
                             "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
                 c = Corrector()
                 result = c.correct("这个方案他妈的解决了问题")
-            self.assertEqual(result, "这个方案他妈的解决了问题")
-            self.assertEqual(c.last_status, "kept-original")
-
-    def test_dictation_judge_failure_keeps_original(self):
-        # No scripted verdict -> HTTP 500. The raw ASR text is the safe default.
-        with StubServer([
-            {"content": [{"type": "text", "text": "今天天气不错。"}]},
-        ]) as srv:
-            with _with_env({"BAOGU_LLM_ENABLED": "1", "BAOGU_LLM_MODE": "dictation",
-                            "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}"}):
-                c = Corrector()
-                result = c.correct("今天天气不错")
-            self.assertEqual(result, "今天天气不错")
-            self.assertEqual(c.last_status, "kept-original")
-
-    def test_kept_original_reaches_the_overlay_as_its_own_status(self):
-        from concurrent.futures import ThreadPoolExecutor
-        from types import SimpleNamespace
-        finish = ENGINE["_best_final_text"]
-        identity = SimpleNamespace(correct=lambda text: text)
-        states = []
-        with StubServer([
-            {"content": [{"type": "text", "text": "这个方案很优雅地解决了问题。"}]},
-            {"content": [{"type": "text", "text": "A"}]},
-        ]) as srv:
-            with _with_env({
-                "BAOGU_LLM_ENABLED": "1",
-                "BAOGU_LLM_DISABLED": "0",
-                "BAOGU_LLM_MODE": "dictation",
-                "DEEPSEEK_BASE_URL": f"http://127.0.0.1:{srv.port}",
-                "BAOGU_LLM_TIMEOUT": "2",
-            }):
-                corrector = Corrector()
-                with patch.dict(finish.__globals__, current_session="test", start_request=1,
-                                terminate=False, final_inflight=None,
-                                set_correction_state=lambda s, status: states.append(status)):
-                    with ThreadPoolExecutor(max_workers=1) as executor:
-                        result = finish("test", 1, "这个方案他妈的解决了问题", b"",
-                                        SimpleNamespace(recognizer=None), identity,
-                                        identity, executor, llm=corrector)
-        self.assertEqual(result, "这个方案他妈的解决了问题")
-        self.assertIn("kept-original", states)
-        self.assertNotIn("failed", states)
+            self.assertEqual(result, "这个方案他妈的解决了问题。")
+            self.assertEqual(c.last_status, "success")
+            self.assertEqual(len(srv.requests), 1)
 
     def test_dictation_profanity_preservation_is_instructed(self):
         self.assertIn("脏话", Corrector.DICTATION_PROMPT)
